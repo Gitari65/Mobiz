@@ -1,0 +1,16 @@
+{
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+  ,
+  "name": "pos-system",
+  "version": "1.0.0",
+  "description": "A point of sale system",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"cd Server && php artisan serve --host=localhost --port=8000\" \"cd client && npm run dev\"",
+    "build": "cd client && npm run build",
+    "start": "php artisan serve --host=localhost --port=8000" ,
+    "serve": "vite --open"
+  }
+}
