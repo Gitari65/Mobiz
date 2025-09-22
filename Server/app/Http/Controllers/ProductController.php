@@ -1,13 +1,124 @@
 <?php
-
-namespace App\Http\Controllers;
-
-use App\Models\Product;
+    namespace App\Http\Controllers;
 use Illuminate\Http\Request;
+use App\Models\Product;
 use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
 {
+    // --- STOCK TRANSFER BETWEEN WAREHOUSES (Admin Only) ---
+
+    public function transferStock(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'from_warehouse_id' => 'required|exists:warehouses,id',
+            'to_warehouse_id' => 'required|exists:warehouses,id|different:from_warehouse_id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $product = \App\Models\Product::findOrFail($validated['product_id']);
+        $fromWarehouse = \App\Models\Warehouse::findOrFail($validated['from_warehouse_id']);
+        $toWarehouse = \App\Models\Warehouse::findOrFail($validated['to_warehouse_id']);
+
+        // Check if fromWarehouse has enough stock
+        if ($product->warehouse_id != $fromWarehouse->id || $product->stock_quantity < $validated['quantity']) {
+            return response()->json(['error' => 'Insufficient stock in source warehouse'], 400);
+        }
+
+        // Deduct from source warehouse
+        $product->stock_quantity -= $validated['quantity'];
+        $product->save();
+
+        // Add to destination warehouse (create or update product record)
+        $destProduct = \App\Models\Product::where('warehouse_id', $toWarehouse->id)
+            ->where('sku', $product->sku)
+            ->first();
+        if ($destProduct) {
+            $destProduct->stock_quantity += $validated['quantity'];
+            $destProduct->save();
+        } else {
+            $newProduct = $product->replicate();
+            $newProduct->warehouse_id = $toWarehouse->id;
+            $newProduct->stock_quantity = $validated['quantity'];
+            $newProduct->save();
+        }
+
+        // Log the transfer
+        \App\Models\WarehouseTransfer::create([
+            'product_id' => $product->id,
+            'from_warehouse_id' => $fromWarehouse->id,
+            'to_warehouse_id' => $toWarehouse->id,
+            'quantity' => $validated['quantity'],
+            'user_id' => $request->user()->id,
+        ]);
+
+        return response()->json(['message' => 'Stock transferred successfully']);
+    }
+    // --- BUSINESS CATEGORIES (Admin Only) ---
+
+    public function storeCategory(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+        $category = \App\Models\BusinessCategory::create([
+            'name' => $validated['name'],
+            'user_id' => $request->user()->id,
+        ]);
+        return response()->json(['message' => 'Category created', 'category' => $category], 201);
+    }
+
+    public function updateCategory(Request $request, $id)
+    {
+        $category = \App\Models\BusinessCategory::findOrFail($id);
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+        $category->update($validated);
+        return response()->json(['message' => 'Category updated', 'category' => $category]);
+    }
+
+    public function destroyCategory($id)
+    {
+        $category = \App\Models\BusinessCategory::findOrFail($id);
+        $category->delete();
+        return response()->json(['message' => 'Category deleted']);
+    }
+
+    // --- WAREHOUSES (Admin Only) ---
+
+    public function storeWarehouse(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'nullable|string|max:100',
+        ]);
+        $warehouse = \App\Models\Warehouse::create([
+            'name' => $validated['name'],
+            'type' => $validated['type'] ?? null,
+            'user_id' => $request->user()->id,
+        ]);
+        return response()->json(['message' => 'Warehouse created', 'warehouse' => $warehouse], 201);
+    }
+
+    public function updateWarehouse(Request $request, $id)
+    {
+        $warehouse = \App\Models\Warehouse::findOrFail($id);
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'nullable|string|max:100',
+        ]);
+        $warehouse->update($validated);
+        return response()->json(['message' => 'Warehouse updated', 'warehouse' => $warehouse]);
+    }
+
+    public function destroyWarehouse($id)
+    {
+        $warehouse = \App\Models\Warehouse::findOrFail($id);
+        $warehouse->delete();
+        return response()->json(['message' => 'Warehouse deleted']);
+    }
     // Fetch all products
     public function index()
     {

@@ -22,7 +22,7 @@
 
     <!-- Navigation Menu -->
     <nav class="navigation">
-      <ul class="nav">
+  <ul class="nav">
         <li class="nav-item">
           <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
             <div class="link-content">
@@ -82,6 +82,24 @@
             </div>
           </router-link>
         </li>
+        <li class="nav-item" v-if="isAdmin">
+          <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
+            <div class="link-content">
+              <i class="fas fa-cogs nav-icon"></i>
+              <span class="nav-text">Admin Customization</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser')">
+            <div class="link-content">
+              <i class="fas fa-user-shield nav-icon"></i>
+              <span class="nav-text">Super User Dashboard</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
       </ul>
     </nav>
 
@@ -120,6 +138,8 @@ const router = useRouter()
 // Reactive state
 const isLoading = ref(false)
 const activeItem = ref('dashboard')
+const isAdmin = ref(false)
+const isSuperUser = ref(false)
 
 // Alert system
 const alert = reactive({
@@ -212,6 +232,15 @@ onMounted(() => {
     activeItem.value = 'inventory'
   } else if (currentPath.includes('/reports')) {
     activeItem.value = 'reports'
+  }
+  // Check if user is admin or super user
+  try {
+    const userData = JSON.parse(localStorage.getItem('userData'))
+    isAdmin.value = userData && userData.role && userData.role.name === 'admin'
+    isSuperUser.value = userData && userData.role && userData.role.name === 'superuser'
+  } catch (e) {
+    isAdmin.value = false
+    isSuperUser.value = false
   }
 })
 

@@ -1,6 +1,7 @@
-<?php
 
+<?php
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\DashboardController;
@@ -8,18 +9,39 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseController;
 
+// AUTHENTICATION & USER MANAGEMENT
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/verify-user/{id}', [AuthController::class, 'verifyUser']); // Superuser only
+Route::get('/unverified-users', [AuthController::class, 'unverifiedUsers']); // Superuser only
+// SUPER USER: Company management
+Route::get('/companies', [AuthController::class, 'listCompanies']);
+Route::patch('/companies/{id}/activate', [AuthController::class, 'activateCompany']);
+Route::patch('/companies/{id}/deactivate', [AuthController::class, 'deactivateCompany']);
+
 // PRODUCTS
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/statistics', [ProductController::class, 'getStatistics']);
 Route::get('/products/out-of-stock', [ProductController::class, 'getOutOfStockProducts']);
 Route::get('/products/low-stock', [ProductController::class, 'getLowStockProducts']);
 Route::get('/products/csv-template', [ProductController::class, 'downloadCSVTemplate']);
-Route::post('/products', [ProductController::class, 'store']);
-Route::post('/products/bulk', [ProductController::class, 'storeBulk']);
-Route::post('/products/import-csv', [ProductController::class, 'importCSV']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
-Route::put('/products/{id}', [ProductController::class, 'update']);
-Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+Route::middleware(['role:admin'])->group(function () {
+    Route::post('/products', [ProductController::class, 'store']);
+    Route::post('/products/bulk', [ProductController::class, 'storeBulk']);
+    Route::post('/products/import-csv', [ProductController::class, 'importCSV']);
+    Route::put('/products/{id}', [ProductController::class, 'update']);
+    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+    // Business Categories (admin only)
+    Route::post('/business-categories', [ProductController::class, 'storeCategory']);
+    Route::put('/business-categories/{id}', [ProductController::class, 'updateCategory']);
+    Route::delete('/business-categories/{id}', [ProductController::class, 'destroyCategory']);
+
+    // Warehouses (admin only)
+    Route::post('/warehouses', [ProductController::class, 'storeWarehouse']);
+    Route::put('/warehouses/{id}', [ProductController::class, 'updateWarehouse']);
+    Route::delete('/warehouses/{id}', [ProductController::class, 'destroyWarehouse']);
+});
 
 // SALES
 Route::post('/sales', [SaleController::class, 'store']);

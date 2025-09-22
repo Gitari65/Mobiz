@@ -21,7 +21,33 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role_id',
+        'verified',
+        'created_by_user_id',
     ];
+    /**
+     * Get the role for the user.
+     */
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Get the user who created this user.
+     */
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    /**
+     * Users created by this user.
+     */
+    public function createdUsers()
+    {
+        return $this->hasMany(User::class, 'created_by_user_id');
+    }
 
     /**
      * The attributes that should be hidden for serialization.

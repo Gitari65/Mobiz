@@ -26,8 +26,8 @@
         <div class="brand-logo">
           <i class="fas fa-seedling"></i>
         </div>
-        <h1 class="brand-title">AGROVET POS</h1>
-        <p class="brand-subtitle">Your Agricultural Business Partner</p>
+        <h1 class="brand-title">MOBIZ POS</h1>
+        <p class="brand-subtitle">Your GROWTH Business Partner</p>
       </div>
 
       <!-- Login Form -->
@@ -40,7 +40,7 @@
         <!-- Username Field -->
         <div class="form-group">
           <label for="username" class="form-label">
-            <i class="fas fa-user"></i>
+             <p class="brand-subtitle">Multi-Business Point of Sale Platform</p>
             Username
           </label>
           <div class="input-wrapper">
@@ -125,6 +125,12 @@
       <!-- Footer -->
       <div class="login-footer">
         <p>&copy; 2025 Agrovet POS. All rights reserved.</p>
+             <!-- Signup Link -->
+             <div class="signup-link">
+               <span>Don't have an account?</span>
+               <router-link to="/signup">Sign Up</router-link>
+             </div>
+
       </div>
     </div>
   </div>
@@ -132,6 +138,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+// <p class="demo-note">This platform supports multiple businesses and roles.</p>
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -200,26 +207,20 @@ async function handleLogin() {
   hideAlert()
 
   try {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500))
-
-    // Hardcoded credentials for demo
-    const correctUsername = 'Admin'
-    const correctPassword = 'Admin123'
-
-    if (username.value === correctUsername && password.value === correctPassword) {
+    // Make API call to backend for authentication
+    const res = await fetch('http://localhost:8000/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: username.value,
+        password: password.value
+      })
+    })
+    const data = await res.json()
+    if (res.ok && data.user) {
       showAlert('Login successful! Redirecting to dashboard...', 'success')
-      
-      // Set authentication tokens
-      localStorage.setItem('authToken', 'demo-auth-token-' + Date.now())
       localStorage.setItem('isLoggedIn', 'true')
-      localStorage.setItem('userData', JSON.stringify({
-        username: username.value,
-        role: 'admin',
-        loginTime: new Date().toISOString()
-      }))
-      
-      // Store login state if remember me is checked
+      localStorage.setItem('userData', JSON.stringify(data.user))
       if (rememberMe.value) {
         localStorage.setItem('rememberMe', 'true')
         localStorage.setItem('rememberedUser', username.value)
@@ -227,16 +228,11 @@ async function handleLogin() {
         localStorage.removeItem('rememberMe')
         localStorage.removeItem('rememberedUser')
       }
-      
-      // Redirect using Vue Router after success message
       setTimeout(() => {
         router.push('/')
       }, 1500)
-      
-      console.log('Login successful')
     } else {
-      showAlert('Invalid username or password. Please try again.', 'error')
-      console.log('Login failed')
+      showAlert(data.error || 'Invalid username or password. Please try again.', 'error')
     }
   } catch (error) {
     showAlert('An error occurred during login. Please try again.', 'error')
