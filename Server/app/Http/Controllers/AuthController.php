@@ -121,9 +121,14 @@ class AuthController extends Controller
                 return response()->json(['error' => 'Account not verified.'], 403);
             }
 
-            Auth::login($user);
-            Log::info('Login successful', ['user_id' => $user->id]);
-            return response()->json(['user' => $user], 200);
+            \Illuminate\Support\Facades\Auth::login($user);
+
+            // Load relations and return role name explicitly so frontend can redirect correctly
+            $user->load('role'); // ensures $user->role is available
+            $roleName = $user->role ? $user->role->name : null;
+
+            Log::info('Login successful', ['user_id' => $user->id, 'role' => $roleName]);
+            return response()->json(['user' => $user, 'role' => $roleName], 200);
 
         } catch (\Throwable $e) {
             Log::error('Login exception', [

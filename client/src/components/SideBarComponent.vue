@@ -92,7 +92,7 @@
           </router-link>
         </li>
         <li class="nav-item" v-if="isSuperUser">
-          <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser')">
+          <router-link to="/super-user" class="nav-link" @click="setActiveItem('superuser')">
             <div class="link-content">
               <i class="fas fa-user-shield nav-icon"></i>
               <span class="nav-text">Super User Dashboard</span>

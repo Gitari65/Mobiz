@@ -221,8 +221,15 @@ async function handleLogin() {
         localStorage.removeItem('rememberMe')
         localStorage.removeItem('rememberedUser')
       }
+
+      // Redirect based on role (backend may return `role` string or user.role.name)
+      const role = data.role || (data.user && data.user.role && data.user.role.name)
       setTimeout(() => {
-        router.push('/')
+        if (role === 'superuser') {
+          router.push('/super-user') // <- normalized route
+        } else {
+          router.push('/')
+        }
       }, 1500)
     } else {
       showAlert(data.error || 'Invalid username or password. Please try again.', 'error')
@@ -570,8 +577,8 @@ onMounted(() => {
   padding: 2px;
 }
 
-.form-input:focus + .input-focus-ring,
-.form-input:focus + .password-toggle + .input-focus-ring {
+.form-input:focus + .input-focus_ring,
+.form-input:focus + .password-toggle + .input-focus_ring {
   opacity: 0.1;
 }
 
