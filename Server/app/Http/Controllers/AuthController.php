@@ -6,6 +6,9 @@ use App\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+
 
 class AuthController extends Controller
 {
@@ -77,20 +80,58 @@ class AuthController extends Controller
     // Login
     public function login(Request $request)
     {
-        $credentials = $request->only('email', 'password');
-        $user = User::where('email', $credentials['email'])->first();
-        if ($user) {
-            if (Hash::check($credentials['password'], $user->password)) {
-                if (!$user->verified) {
-                    return response()->json(['error' => 'Account not verified.'], 403);
-                }
-                Auth::login($user);
-                return response()->json(['user' => $user], 200);
-            } else {
+        // Validate required fields
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string',
+            'password' => 'required|string',
+        ]);
+        if ($validator->fails()) {
+            Log::warning('Login validation failed', [
+                'input' => $request->all(),
+                'errors' => $validator->errors()
+            ]);
+            return response()->json([
+                'error' => 'Validation failed.',
+                'messages' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $credentials = $request->only('email', 'password');
+            $loginValue = $credentials['email'];
+            Log::info('Login attempt', ['loginValue' => $loginValue]);
+
+            // Try to find user by email or username
+            $user = \App\Models\User::where('email', $loginValue)
+                ->orWhere('name', $loginValue)
+                ->first();
+
+            if (!$user) {
+                Log::warning('Login failed: user not found', ['loginValue' => $loginValue]);
+                return response()->json(['error' => 'User not found.'], 401);
+            }
+
+            if (!\Illuminate\Support\Facades\Hash::check($credentials['password'], $user->password)) {
+                Log::warning('Login failed: incorrect password', ['user_id' => $user->id]);
                 return response()->json(['error' => 'Password is incorrect.'], 401);
             }
+
+            if (!$user->verified) {
+                Log::warning('Login failed: account not verified', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Account not verified.'], 403);
+            }
+
+            Auth::login($user);
+            Log::info('Login successful', ['user_id' => $user->id]);
+            return response()->json(['user' => $user], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Login exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Server error: ' . $e->getMessage()], 500);
         }
-        return response()->json(['error' => 'Email not found.'], 401);
     }
 
     // Superuser verifies a user

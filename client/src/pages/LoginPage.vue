@@ -27,21 +27,21 @@
           <i class="fas fa-seedling"></i>
         </div>
         <h1 class="brand-title">MOBIZ POS</h1>
-        <p class="brand-subtitle">Your GROWTH Business Partner</p>
+        <p class="brand-subtitle">Multi-Business Point of Sale Platform</p>
       </div>
 
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="form-header">
           <h2 class="form-title">Welcome Back</h2>
-          <p class="form-subtitle">Sign in to your account</p>
+          <p class="form-subtitle"></p>
         </div>
 
         <!-- Username Field -->
         <div class="form-group">
           <label for="username" class="form-label">
-             <p class="brand-subtitle">Multi-Business Point of Sale Platform</p>
-            Username
+            <i class="fas fa-user"></i>
+            Username or Email
           </label>
           <div class="input-wrapper">
             <input
@@ -51,7 +51,7 @@
               :disabled="isLoading"
               required
               class="form-input"
-              placeholder="Enter your username"
+              placeholder="Enter your username or email"
             />
             <div class="input-focus-ring"></div>
           </div>
@@ -112,14 +112,7 @@
           </div>
         </button>
 
-        <!-- Demo Credentials -->
-        <div class="demo-section">
-          <p class="demo-title">Demo Credentials:</p>
-          <div class="demo-credentials">
-            <span><strong>Username:</strong> Admin</span>
-            <span><strong>Password:</strong> Admin123</span>
-          </div>
-        </div>
+        
       </form>
 
       <!-- Footer -->
@@ -252,6 +245,8 @@ onMounted(() => {
     rememberMe.value = true
   }
 })
+
+
 </script>
 
 <style scoped>

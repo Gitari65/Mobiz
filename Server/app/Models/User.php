@@ -24,6 +24,7 @@ class User extends Authenticatable
         'role_id',
         'verified',
         'created_by_user_id',
+        'company_id',
     ];
     /**
      * Get the role for the user.
