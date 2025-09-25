@@ -212,6 +212,8 @@ async function handleLogin() {
     const data = await res.json()
     if (res.ok && data.user) {
       showAlert('Login successful! Redirecting to dashboard...', 'success')
+
+      // Set localStorage synchronously
       localStorage.setItem('isLoggedIn', 'true')
       localStorage.setItem('userData', JSON.stringify(data.user))
       if (rememberMe.value) {
@@ -223,14 +225,14 @@ async function handleLogin() {
       }
 
       // Redirect based on role (backend may return `role` string or user.role.name)
-      const role = data.role || (data.user && data.user.role && data.user.role.name)
-      setTimeout(() => {
-        if (role === 'superuser') {
-          router.push('/super-user') // <- normalized route
-        } else {
-          router.push('/')
-        }
-      }, 1500)
+     // Fix role casing + update localStorage
+const role = (data.role || data.user?.role?.name || '').toLowerCase()
+localStorage.setItem('isLoggedIn', 'true')
+localStorage.setItem('userData', JSON.stringify(data.user))
+
+const targetRoute = role === 'superuser' ? '/super-user' : '/'
+router.replace(targetRoute)
+
     } else {
       showAlert(data.error || 'Invalid username or password. Please try again.', 'error')
     }
@@ -859,3 +861,5 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 </style>
+
+

@@ -13,16 +13,26 @@ import SignupPage from '../pages/SignupPage.vue'
 
 // Helper function to check if user is authenticated
 const isAuthenticated = () => {
-  const authToken = localStorage.getItem('authToken')
-  const isLoggedIn = localStorage.getItem('isLoggedIn')
-  return !!(authToken && isLoggedIn === 'true')
+  const authToken = localStorage.getItem('authToken');
+  const isLoggedIn = localStorage.getItem('isLoggedIn');
+  let role = null;
+  try {
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    role = userData?.role?.name || null;
+  } catch (error) {
+    console.error("Error parsing userData from localStorage:", error);
+  }
+  return {
+    isAuth: !!(authToken && isLoggedIn === 'true'),
+    role: role
+  };
 }
 
 import AdminCustomizationPage from '../pages/AdminCustomizationPage.vue'
 
 const routes = [
   {
-    path: '/superuser',
+    path: '/super-user', // Changed from /superuser
     name: 'SuperUserDashboard',
     component: SuperUserDashboard,
     meta: {
@@ -109,7 +119,7 @@ const routes = [
   {
     path: '/:pathMatch(.*)*',
     redirect: (to) => {
-      return isAuthenticated() ? '/' : '/login'
+      return isAuthenticated().isAuth ? '/' : '/login'
     }
   }
 ]
@@ -121,21 +131,24 @@ const router = createRouter({
 
 // Navigation guards
 router.beforeEach((to, from, next) => {
-  const authenticated = isAuthenticated()
-  
-  // Check if route requires authentication
-  if (to.meta.requiresAuth && !authenticated) {
-    next('/login')
-    return
+  const isAuth = localStorage.getItem('isLoggedIn') === 'true'
+  const user = JSON.parse(localStorage.getItem('userData') || '{}')
+  const role = (user?.role?.name || '').toLowerCase()
+
+  console.log("isAuth:", isAuth)
+  console.log("Role:", role)
+
+  if (to.meta.requiresAuth && !isAuth) {
+    return next('/login')
   }
-  
-  // Check if route requires guest (like login page)
-  if (to.meta.requiresGuest && authenticated) {
-    next('/')
-    return
+
+  // Example: protect superuser routes
+  if (to.meta.role === 'superuser' && role !== 'superuser') {
+    return next('/') 
   }
-  
+
   next()
 })
+
 
 export default router

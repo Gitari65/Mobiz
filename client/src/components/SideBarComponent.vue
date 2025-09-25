@@ -23,6 +23,7 @@
     <!-- Navigation Menu -->
     <nav class="navigation">
   <ul class="nav">
+
         <li class="nav-item">
           <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
             <div class="link-content">
@@ -33,7 +34,7 @@
           </router-link>
         </li>
         
-        <li class="nav-item">
+        <li class="nav-item" v-if="userData?.role?.name !== 'cashier'">
           <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
             <div class="link-content">
               <i class="fas fa-cash-register nav-icon"></i>
@@ -43,7 +44,7 @@
           </router-link>
         </li>
         
-        <li class="nav-item">
+        <li class="nav-item" v-if="userData?.role?.name !== 'cashier'">
           <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
             <div class="link-content">
               <i class="fas fa-box nav-icon"></i>
@@ -53,7 +54,7 @@
           </router-link>
         </li>
         
-        <li class="nav-item">
+        <li class="nav-item" v-if="userData?.role?.name !== 'cashier'">
           <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
             <div class="link-content">
               <i class="fas fa-warehouse nav-icon"></i>
@@ -63,7 +64,7 @@
           </router-link>
         </li>
         
-        <li class="nav-item">
+        <li class="nav-item" v-if="userData?.role?.name !== 'cashier'">
           <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
             <div class="link-content">
               <i class="fas fa-chart-bar nav-icon"></i>
@@ -73,7 +74,7 @@
           </router-link>
         </li>
         
-        <li class="nav-item">
+        <li class="nav-item" v-if="isAdmin">
           <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
             <div class="link-content">
               <i class="fas fa-receipt nav-icon"></i>
@@ -100,6 +101,35 @@
             </div>
           </router-link>
         </li>
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/user-management" class="nav-link" @click="setActiveItem('user-management')">
+            <div class="link-content">
+              <i class="fas fa-users-cog nav-icon"></i>
+              <span class="nav-text">User Management</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/system-logs" class="nav-link" @click="setActiveItem('system-logs')">
+            <div class="link-content">
+              <i class="fas fa-file-alt nav-icon"></i>
+              <span class="nav-text">System Logs</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
+            <div class="link-content">
+              <i class="fas fa-sliders-h nav-icon"></i>
+              <span class="nav-text">Settings</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+
+
       </ul>
     </nav>
 
@@ -220,29 +250,31 @@ const handleLogout = async () => {
 
 // Lifecycle
 onMounted(() => {
-  // Set initial active item based on current route
   const currentPath = router.currentRoute.value.path
-  if (currentPath === '/') {
-    activeItem.value = 'dashboard'
-  } else if (currentPath.includes('/sales')) {
-    activeItem.value = 'sales'
-  } else if (currentPath.includes('/products')) {
-    activeItem.value = 'products'
-  } else if (currentPath.includes('/inventory')) {
-    activeItem.value = 'inventory'
-  } else if (currentPath.includes('/reports')) {
-    activeItem.value = 'reports'
-  }
-  // Check if user is admin or super user
+
+  // Set active item
+  if (currentPath === '/') activeItem.value = 'dashboard'
+  else if (currentPath.includes('/sales')) activeItem.value = 'sales'
+  else if (currentPath.includes('/products')) activeItem.value = 'products'
+  else if (currentPath.includes('/inventory')) activeItem.value = 'inventory'
+  else if (currentPath.includes('/reports')) activeItem.value = 'reports'
+
+  // Get user data from localStorage
   try {
     const userData = JSON.parse(localStorage.getItem('userData'))
-    isAdmin.value = userData && userData.role && userData.role.name === 'admin'
-    isSuperUser.value = userData && userData.role && userData.role.name === 'superuser'
+
+    if (userData?.role?.name) {
+      const roleName = userData.role.name.toLowerCase()
+
+      isAdmin.value = roleName === 'admin'
+      isSuperUser.value = roleName === 'superuser'
+    }
   } catch (e) {
     isAdmin.value = false
     isSuperUser.value = false
   }
 })
+
 
 // Expose methods for parent components
 defineExpose({
