@@ -1,532 +1,610 @@
+<!-- Enhanced LoginPage.vue with Moving Bubbles Animation -->
 <template>
-  <div class="login-container">
-    <!-- Alert System -->
-    <div v-if="alert.show" class="alert-container" :class="alert.type">
-      <div class="alert-content">
-        <i :class="getAlertIcon()"></i>
-        <span>{{ alert.message }}</span>
+  <div class="login-page">
+    <!-- Animated Background with Moving Bubbles -->
+    <div class="animated-background">
+      <div class="bubbles">
+        <div class="bubble" v-for="n in 15" :key="n"></div>
       </div>
-      <button class="alert-close" @click="hideAlert">
-        <i class="fas fa-times"></i>
-      </button>
+      <div class="gradient-overlay"></div>
     </div>
 
-    <!-- Background Elements -->
-    <div class="background-overlay">
-      <div class="floating-shape shape-1"></div>
-      <div class="floating-shape shape-2"></div>
-      <div class="floating-shape shape-3"></div>
-      <div class="floating-shape shape-4"></div>
-    </div>
-
-    <!-- Main Login Card -->
-    <div class="login-card">
-      <!-- Logo/Brand Section -->
-      <div class="brand-section">
-        <div class="brand-logo">
-          <i class="fas fa-seedling"></i>
-        </div>
-        <h1 class="brand-title">MOBIZ POS</h1>
-        <p class="brand-subtitle">Multi-Business Point of Sale Platform</p>
-      </div>
-
-      <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="login-form">
-        <div class="form-header">
-          <h2 class="form-title">Welcome Back</h2>
-          <p class="form-subtitle"></p>
-        </div>
-
-        <!-- Username Field -->
-        <div class="form-group">
-          <label for="username" class="form-label">
-            <i class="fas fa-user"></i>
-            Username or Email
-          </label>
-          <div class="input-wrapper">
-            <input
-              id="username"
-              type="text"
-              v-model="username"
-              :disabled="isLoading"
-              required
-              class="form-input"
-              placeholder="Enter your username or email"
-            />
-            <div class="input-focus-ring"></div>
+    <div class="login-container">
+      <div class="login-card">
+        <!-- Floating Brand Logo -->
+        <div class="brand-section">
+          <div class="brand-logo-wrapper">
+            <div class="brand-logo">
+              <i class="fas fa-shopping-cart"></i>
+              <div class="logo-pulse"></div>
+            </div>
           </div>
+          <h1 class="login-title">
+            <span class="title-text">Mobiz</span>
+            <span class="title-accent">POS</span>
+          </h1>
+          <p class="login-subtitle">Welcome back! Sign in to continue</p>
         </div>
 
-        <!-- Password Field -->
-        <div class="form-group">
-          <label for="password" class="form-label">
-            <i class="fas fa-lock"></i>
-            Password
-          </label>
-          <div class="input-wrapper">
-            <input
-              id="password"
-              :type="showPassword ? 'text' : 'password'"
-              v-model="password"
-              :disabled="isLoading"
-              required
-              class="form-input"
-              placeholder="Enter your password"
-            />
-            <button
-              type="button"
-              class="password-toggle"
-              @click="togglePasswordVisibility"
-              :disabled="isLoading"
-            >
-              <i :class="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+        <!-- Login Form -->
+        <form @submit.prevent="handleLogin" class="login-form">
+          <div class="form-group">
+            <div class="input-wrapper">
+              <i class="fas fa-envelope input-icon"></i>
+              <input
+                id="email"
+                type="email"
+                v-model="loginForm.email"
+                class="form-input"
+                :class="{ error: errors.email, filled: loginForm.email }"
+                placeholder=" "
+                required
+              />
+              <label for="email" class="floating-label">Email Address</label>
+              <div class="input-line"></div>
+            </div>
+            <transition name="error-slide">
+              <span v-if="errors.email" class="error-text">
+                <i class="fas fa-exclamation-circle"></i>
+                {{ errors.email }}
+              </span>
+            </transition>
+          </div>
+
+          <div class="form-group">
+            <div class="input-wrapper">
+              <i class="fas fa-lock input-icon"></i>
+              <input
+                id="password"
+                :type="showPassword ? 'text' : 'password'"
+                v-model="loginForm.password"
+                class="form-input"
+                :class="{ error: errors.password, filled: loginForm.password }"
+                placeholder=" "
+                required
+              />
+              <label for="password" class="floating-label">Password</label>
+              <button
+                type="button"
+                class="password-toggle"
+                @click="showPassword = !showPassword"
+              >
+                <i :class="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+              </button>
+              <div class="input-line"></div>
+            </div>
+            <transition name="error-slide">
+              <span v-if="errors.password" class="error-text">
+                <i class="fas fa-exclamation-circle"></i>
+                {{ errors.password }}
+              </span>
+            </transition>
+          </div>
+
+          <div class="form-options">
+            <label class="checkbox-wrapper">
+              <input
+                type="checkbox"
+                v-model="loginForm.rememberMe"
+                class="checkbox-input"
+              />
+              <div class="checkbox-custom">
+                <i class="fas fa-check checkbox-icon"></i>
+              </div>
+              <span class="checkbox-text">Remember me</span>
+            </label>
+            <a href="#" class="forgot-link">Forgot Password?</a>
+          </div>
+
+          <button
+            type="submit"
+            class="login-button"
+            :disabled="isLoading"
+            :class="{ loading: isLoading }"
+          >
+            <div class="button-content">
+              <div v-if="isLoading" class="loading-spinner">
+                <div class="spinner-ring"></div>
+              </div>
+              <i v-else class="fas fa-sign-in-alt button-icon"></i>
+              <span class="button-text">{{ isLoading ? 'Signing in...' : 'Sign In' }}</span>
+            </div>
+            <div class="button-ripple"></div>
+          </button>
+        </form>
+
+        <!-- Social Login Options -->
+        <div class="divider">
+          <span class="divider-text">or continue with</span>
+        </div>
+
+        <div class="social-login">
+          <button class="social-button google" type="button">
+            <i class="fab fa-google"></i>
+          </button>
+          <button class="social-button microsoft" type="button">
+            <i class="fab fa-microsoft"></i>
+          </button>
+          <button class="social-button apple" type="button">
+            <i class="fab fa-apple"></i>
+          </button>
+        </div>
+
+        <!-- Footer -->
+        <div class="login-footer">
+          <p class="footer-text">
+            Don't have an account?
+            <router-link to="/signup" class="signup-link">Create Account</router-link>
+          </p>
+        </div>
+
+        <!-- Alert Messages -->
+        <transition name="alert-slide">
+          <div v-if="alert.show" class="login-alert" :class="alert.type">
+            <div class="alert-content">
+              <i :class="getAlertIcon(alert.type)" class="alert-icon"></i>
+              <span class="alert-message">{{ alert.message }}</span>
+            </div>
+            <button @click="alert.show = false" class="alert-close">
+              <i class="fas fa-times"></i>
             </button>
-            <div class="input-focus-ring"></div>
           </div>
-        </div>
+        </transition>
+      </div>
 
-        <!-- Remember Me -->
-        <div class="form-options">
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="rememberMe" :disabled="isLoading" />
-            <span class="checkmark"></span>
-            Remember me
-          </label>
-          <a href="#" class="forgot-link">Forgot password?</a>
-        </div>
-
-        <!-- Login Button -->
-        <button
-          type="submit"
-          class="login-btn"
-          :disabled="isLoading || !canSubmit"
-          :class="{ 'loading': isLoading }"
-        >
-          <div v-if="isLoading" class="btn-loading">
-            <div class="btn-spinner"></div>
-            <span>Signing in...</span>
-          </div>
-          <div v-else class="btn-content">
-            <i class="fas fa-sign-in-alt"></i>
-            <span>Sign In</span>
-          </div>
-        </button>
-
-        
-      </form>
-
-      <!-- Footer -->
-      <div class="login-footer">
-        <p>&copy; 2025 Agrovet POS. All rights reserved.</p>
-             <!-- Signup Link -->
-             <div class="signup-link">
-               <span>Don't have an account?</span>
-               <router-link to="/signup">Sign Up</router-link>
-             </div>
-
+      <!-- Version Info -->
+      <div class="version-info">
+        <p>Mobiz POS v2.1.0 | Secure Business Management</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-// <p class="demo-note">This platform supports multiple businesses and roles.</p>
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { authAPI, handleAPIError } from '../services/api.js'
 
 const router = useRouter()
 
-// Form state
-const username = ref('')
-const password = ref('')
-const showPassword = ref(false)
-const rememberMe = ref(false)
+// Reactive state
 const isLoading = ref(false)
+const showPassword = ref(false)
 
-// Alert system
-const alert = ref({
+const loginForm = reactive({
+  email: '',
+  password: '',
+  rememberMe: false
+})
+
+const errors = reactive({
+  email: '',
+  password: '',
+  general: ''
+})
+
+const alert = reactive({
   show: false,
-  message: '',
-  type: 'success' // success, error, warning, info
+  type: 'info',
+  message: ''
 })
 
-// Computed properties
-const canSubmit = computed(() => {
-  return username.value.trim().length > 0 && password.value.length > 0
-})
+// Methods
+const clearErrors = () => {
+  errors.email = ''
+  errors.password = ''
+  errors.general = ''
+}
 
-// Alert functions
-function showAlert(message, type = 'success') {
-  alert.value = {
-    show: true,
-    message,
-    type
+const showAlert = (type, message, duration = 3000) => {
+  alert.show = true
+  alert.type = type
+  alert.message = message
+  
+  setTimeout(() => {
+    alert.show = false
+  }, duration)
+}
+
+const getAlertIcon = (type) => {
+  const icons = {
+    success: 'fas fa-check-circle',
+    error: 'fas fa-exclamation-circle',
+    warning: 'fas fa-exclamation-triangle',
+    info: 'fas fa-info-circle'
+  }
+  return icons[type] || icons.info
+}
+
+const validateForm = () => {
+  clearErrors()
+  let isValid = true
+
+  if (!loginForm.email) {
+    errors.email = 'Email is required'
+    isValid = false
+  } else if (!/\S+@\S+\.\S+/.test(loginForm.email)) {
+    errors.email = 'Please enter a valid email address'
+    isValid = false
+  }
+
+  if (!loginForm.password) {
+    errors.password = 'Password is required'
+    isValid = false
+  } else if (loginForm.password.length < 6) {
+    errors.password = 'Password must be at least 6 characters'
+    isValid = false
+  }
+
+  return isValid
+}
+
+const setAuthenticationState = (user, token) => {
+  localStorage.setItem('authToken', token)
+  localStorage.setItem('isLoggedIn', 'true')
+  localStorage.setItem('userData', JSON.stringify(user))
+  
+  if (loginForm.rememberMe) {
+    localStorage.setItem('rememberMe', 'true')
   }
   
-  // Auto-hide success alerts
-  if (type === 'success') {
-    setTimeout(() => {
-      hideAlert()
-    }, 3000)
+  const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000)
+  localStorage.setItem('sessionExpiry', expiryTime.toString())
+  
+  console.log('Authentication state set:', {
+    token,
+    user: user.name,
+    role: user.role.name,
+    isLoggedIn: localStorage.getItem('isLoggedIn')
+  })
+}
+
+const getRoleBasedRedirect = (role) => {
+  const roleName = role.toLowerCase()
+  
+  const roleRedirects = {
+    'superuser': '/super-user',
+    'admin': '/',
+    'cashier': '/'
+  }
+  
+  return roleRedirects[roleName] || '/'
+}
+
+const authenticateUser = async (email, password) => {
+  try {
+    const result = await authAPI.login(email, password)
+    
+    if (result.success) {
+      return result
+    } else {
+      return {
+        success: false,
+        message: result.message || 'Login failed',
+        status: result.status
+      }
+    }
+  } catch (error) {
+    console.error('Authentication error:', error)
+    return {
+      success: false,
+      message: 'Network error. Please check your connection and try again.'
+    }
   }
 }
 
-function hideAlert() {
-  alert.value.show = false
-}
-
-function getAlertIcon() {
-  switch (alert.value.type) {
-    case 'success': return 'fas fa-check-circle'
-    case 'error': return 'fas fa-exclamation-circle'
-    case 'warning': return 'fas fa-exclamation-triangle'
-    case 'info': return 'fas fa-info-circle'
-    default: return 'fas fa-info-circle'
-  }
-}
-
-// Form functions
-function togglePasswordVisibility() {
-  showPassword.value = !showPassword.value
-}
-
-async function handleLogin() {
-  if (!canSubmit.value) {
-    showAlert('Please fill in all required fields.', 'warning')
+const handleLogin = async () => {
+  if (!validateForm()) {
     return
   }
 
   isLoading.value = true
-  hideAlert()
+  clearErrors()
 
   try {
-    // Make API call to backend for authentication
-    const res = await fetch('http://localhost:8000/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: username.value,
-        password: password.value
-      })
-    })
-    const data = await res.json()
-    if (res.ok && data.user) {
-      showAlert('Login successful! Redirecting to dashboard...', 'success')
-
-      // Set localStorage synchronously
-      localStorage.setItem('isLoggedIn', 'true')
-      localStorage.setItem('userData', JSON.stringify(data.user))
-      if (rememberMe.value) {
-        localStorage.setItem('rememberMe', 'true')
-        localStorage.setItem('rememberedUser', username.value)
-      } else {
-        localStorage.removeItem('rememberMe')
-        localStorage.removeItem('rememberedUser')
+    const authResult = await authenticateUser(loginForm.email, loginForm.password)
+    
+    if (authResult.success) {
+      if (authResult.user.verified === false) {
+        showAlert('warning', 'Your account is not yet verified. Please contact your administrator.', 5000)
+        return
       }
-
-      // Redirect based on role (backend may return `role` string or user.role.name)
-     // Fix role casing + update localStorage
-const role = (data.role || data.user?.role?.name || '').toLowerCase()
-localStorage.setItem('isLoggedIn', 'true')
-localStorage.setItem('userData', JSON.stringify(data.user))
-
-const targetRoute = role === 'superuser' ? '/super-user' : '/'
-router.replace(targetRoute)
-
+      
+      setAuthenticationState(authResult.user, authResult.token)
+      showAlert('success', `Welcome back, ${authResult.user.name}!`, 2000)
+      
+      const redirectPath = getRoleBasedRedirect(authResult.user.role.name)
+      
+      console.log(`Redirecting ${authResult.user.role.name} user to ${redirectPath}`)
+      
+      setTimeout(() => {
+        router.push(redirectPath)
+      }, 1500)
+      
     } else {
-      showAlert(data.error || 'Invalid username or password. Please try again.', 'error')
+      if (authResult.status === 403) {
+        showAlert('warning', authResult.message, 5000)
+      } else {
+        showAlert('error', authResult.message)
+      }
     }
+    
   } catch (error) {
-    showAlert('An error occurred during login. Please try again.', 'error')
     console.error('Login error:', error)
+    showAlert('error', 'An unexpected error occurred. Please try again.')
   } finally {
     isLoading.value = false
   }
 }
 
-// Auto-fill remembered user
+// Check if user is already logged in
 onMounted(() => {
-  const remembered = localStorage.getItem('rememberedUser')
-  const rememberMeFlag = localStorage.getItem('rememberMe')
+  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
+  const userData = localStorage.getItem('userData')
   
-  if (remembered && rememberMeFlag === 'true') {
-    username.value = remembered
-    rememberMe.value = true
+  if (isLoggedIn && userData) {
+    try {
+      const user = JSON.parse(userData)
+      const redirectPath = getRoleBasedRedirect(user.role.name)
+      
+      console.log('User already logged in, redirecting to:', redirectPath)
+      router.push(redirectPath)
+    } catch (error) {
+      console.error('Error parsing stored user data:', error)
+      localStorage.removeItem('userData')
+      localStorage.removeItem('isLoggedIn')
+      localStorage.removeItem('authToken')
+    }
   }
 })
-
-
 </script>
 
 <style scoped>
-/* Modern Login Page Styles */
-* {
-  box-sizing: border-box;
-}
-
-.login-container {
-  height: 100vh;
-  max-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+/* Global Styles */
+.login-page {
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   position: relative;
   overflow: hidden;
-  box-sizing: border-box;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* Alert System */
-.alert-container {
-  position: fixed;
-  top: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  max-width: 400px;
-  width: 90%;
-  padding: 1rem 1.5rem;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(10px);
-  animation: alertSlideIn 0.3s ease;
-}
-
-@keyframes alertSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.alert-container.success {
-  background: linear-gradient(135deg, rgba(72, 187, 120, 0.95), rgba(56, 161, 105, 0.95));
-  color: white;
-  border: 1px solid rgba(72, 187, 120, 0.3);
-}
-
-.alert-container.error {
-  background: linear-gradient(135deg, rgba(229, 62, 62, 0.95), rgba(197, 48, 48, 0.95));
-  color: white;
-  border: 1px solid rgba(229, 62, 62, 0.3);
-}
-
-.alert-container.warning {
-  background: linear-gradient(135deg, rgba(237, 137, 54, 0.95), rgba(221, 107, 32, 0.95));
-  color: white;
-  border: 1px solid rgba(237, 137, 54, 0.3);
-}
-
-.alert-container.info {
-  background: linear-gradient(135deg, rgba(66, 153, 225, 0.95), rgba(49, 130, 206, 0.95));
-  color: white;
-  border: 1px solid rgba(66, 153, 225, 0.3);
-}
-
-.alert-content {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex: 1;
-}
-
-.alert-content i {
-  font-size: 1.1rem;
-}
-
-.alert-close {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  transition: background 0.2s ease;
-}
-
-.alert-close:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Background Animation */
-.background-overlay {
+/* Animated Background */
+.animated-background {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  z-index: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, 
+    #667eea 0%, 
+    #764ba2 25%, 
+    #6a5acd 50%, 
+    #8a2387 75%, 
+    #e94057 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+  z-index: 1;
 }
 
-.floating-shape {
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.gradient-overlay {
   position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+              radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
+  animation: overlayPulse 8s ease-in-out infinite;
+}
+
+@keyframes overlayPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* Floating Bubbles */
+.bubbles {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bubble {
+  position: absolute;
+  bottom: -100px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 50%;
-  animation: float 20s infinite linear;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  animation: bubbleFloat 15s infinite linear;
 }
 
-.shape-1 {
-  width: 80px;
-  height: 80px;
-  top: 20%;
-  left: 10%;
-  animation-delay: 0s;
-}
+.bubble:nth-child(1) { left: 10%; width: 60px; height: 60px; animation-delay: 0s; }
+.bubble:nth-child(2) { left: 20%; width: 20px; height: 20px; animation-delay: 2s; }
+.bubble:nth-child(3) { left: 25%; width: 40px; height: 40px; animation-delay: 4s; }
+.bubble:nth-child(4) { left: 40%; width: 80px; height: 80px; animation-delay: 0s; }
+.bubble:nth-child(5) { left: 70%; width: 30px; height: 30px; animation-delay: 1s; }
+.bubble:nth-child(6) { left: 80%; width: 50px; height: 50px; animation-delay: 3s; }
+.bubble:nth-child(7) { left: 32%; width: 25px; height: 25px; animation-delay: 7s; }
+.bubble:nth-child(8) { left: 55%; width: 35px; height: 35px; animation-delay: 15s; }
+.bubble:nth-child(9) { left: 25%; width: 45px; height: 45px; animation-delay: 2s; }
+.bubble:nth-child(10) { left: 90%; width: 25px; height: 25px; animation-delay: 11s; }
+.bubble:nth-child(11) { left: 15%; width: 55px; height: 55px; animation-delay: 13s; }
+.bubble:nth-child(12) { left: 60%; width: 30px; height: 30px; animation-delay: 6s; }
+.bubble:nth-child(13) { left: 75%; width: 40px; height: 40px; animation-delay: 9s; }
+.bubble:nth-child(14) { left: 5%; width: 70px; height: 70px; animation-delay: 12s; }
+.bubble:nth-child(15) { left: 85%; width: 35px; height: 35px; animation-delay: 5s; }
 
-.shape-2 {
-  width: 60px;
-  height: 60px;
-  top: 60%;
-  right: 15%;
-  animation-delay: 5s;
-}
-
-.shape-3 {
-  width: 100px;
-  height: 100px;
-  bottom: 20%;
-  left: 20%;
-  animation-delay: 10s;
-}
-
-.shape-4 {
-  width: 40px;
-  height: 40px;
-  top: 30%;
-  right: 30%;
-  animation-delay: 15s;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-    opacity: 0.7;
+@keyframes bubbleFloat {
+  0% {
+    bottom: -100px;
+    transform: translateX(0px) rotate(0deg);
+    opacity: 0;
   }
-  50% {
-    transform: translateY(-20px) rotate(180deg);
-    opacity: 1;
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    bottom: 110vh;
+    transform: translateX(-100px) rotate(600deg);
+    opacity: 0;
   }
 }
 
-/* Main Login Card */
+/* Login Container */
+.login-container {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 440px;
+  padding: 20px;
+}
+
 .login-card {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
-  border-radius: 20px;
-  padding: 2rem 2.5rem;
-  width: 100%;
-  max-width: 420px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  border-radius: 24px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15),
+              0 0 0 1px rgba(255, 255, 255, 0.2);
+  padding: 48px;
   position: relative;
-  z-index: 1;
-  animation: cardSlideIn 0.6s ease;
-  box-sizing: border-box;
+  overflow: hidden;
+  animation: cardSlideIn 0.8s ease-out;
 }
 
 @keyframes cardSlideIn {
-  from {
+  0% {
     opacity: 0;
     transform: translateY(30px) scale(0.95);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
 
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+}
+
 /* Brand Section */
 .brand-section {
   text-align: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 40px;
+}
+
+.brand-logo-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 24px;
 }
 
 .brand-logo {
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #48bb78, #38a169);
-  border-radius: 16px;
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 0.75rem;
-  font-size: 1.5rem;
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
-  box-shadow: 0 8px 20px rgba(72, 187, 120, 0.3);
+  border-radius: 50%;
+  font-size: 32px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
+  animation: logoFloat 3s ease-in-out infinite;
 }
 
-.brand-title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: #2d3748;
-  margin: 0 0 0.25rem 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(180deg); }
+}
+
+.logo-pulse {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  border-radius: 50%;
+  border: 2px solid #667eea;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.1); opacity: 0.4; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+.login-title {
+  font-size: 36px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  background: linear-gradient(135deg, #667eea, #764ba2);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.brand-subtitle {
-  color: #718096;
+.title-text {
+  display: inline-block;
+  animation: titleSlide 0.8s ease-out 0.2s both;
+}
+
+.title-accent {
+  display: inline-block;
+  animation: titleSlide 0.8s ease-out 0.4s both;
+}
+
+@keyframes titleSlide {
+  0% { opacity: 0; transform: translateX(-20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+.login-subtitle {
+  color: #6b7280;
+  font-size: 16px;
+  font-weight: 500;
   margin: 0;
-  font-size: 0.875rem;
+  animation: subtitleFade 0.8s ease-out 0.6s both;
 }
 
-/* Form Header */
-.form-header {
-  text-align: center;
-  margin-bottom: 1.5rem;
+@keyframes subtitleFade {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
-.form-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #2d3748;
-  margin: 0 0 0.25rem 0;
-}
-
-.form-subtitle {
-  color: #718096;
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-/* Form Styling */
+/* Form Styles */
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 24px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-}
-
-.form-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: #4a5568;
-  font-size: 0.95rem;
-}
-
-.form-label i {
-  color: #667eea;
-  width: 16px;
+  gap: 8px;
 }
 
 .input-wrapper {
@@ -535,77 +613,125 @@ onMounted(() => {
   align-items: center;
 }
 
-.form-input {
-  width: 100%;
-  padding: 1rem 1.25rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  font-size: 1rem;
-  background: white;
-  color: #2d3748;
+.input-icon {
+  position: absolute;
+  left: 16px;
+  color: #9ca3af;
+  font-size: 16px;
+  z-index: 3;
   transition: all 0.3s ease;
-  position: relative;
-  z-index: 1;
 }
 
-.form-input:focus {
+.form-input {
+  width: 100%;
+  padding: 16px 48px 16px 48px;
+  border: 2px solid #e5e7eb;
+  border-radius: 16px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.8);
+  transition: all 0.3s ease;
   outline: none;
+  position: relative;
+  z-index: 2;
+}
+
+.form-input:focus,
+.form-input.filled {
   border-color: #667eea;
+  background: rgba(255, 255, 255, 0.95);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
 }
 
-.form-input:disabled {
-  background: #f7fafc;
-  color: #a0aec0;
-  cursor: not-allowed;
+.form-input:focus + .floating-label,
+.form-input.filled + .floating-label {
+  transform: translateY(-12px) scale(0.75);
+  color: #667eea;
+  font-weight: 600;
 }
 
-.form-input::placeholder {
-  color: #a0aec0;
+.form-input:focus ~ .input-icon {
+  color: #667eea;
+  transform: scale(1.1);
 }
 
-.input-focus-ring {
+.floating-label {
   position: absolute;
-  top: 0;
+  left: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 16px;
+  pointer-events: none;
+  transition: all 0.3s ease;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0 8px;
+}
+
+.input-line {
+  position: absolute;
+  bottom: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  border-radius: 12px;
+  height: 2px;
   background: linear-gradient(135deg, #667eea, #764ba2);
-  opacity: 0;
-  z-index: 0;
-  transition: opacity 0.3s ease;
-  padding: 2px;
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
+  z-index: 1;
 }
 
-.form-input:focus + .input-focus_ring,
-.form-input:focus + .password-toggle + .input-focus_ring {
-  opacity: 0.1;
+.form-input:focus ~ .input-line {
+  transform: scaleX(1);
 }
 
 .password-toggle {
   position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 16px;
   background: none;
   border: none;
-  color: #a0aec0;
+  color: #9ca3af;
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 6px;
-  transition: color 0.3s ease;
-  z-index: 2;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  z-index: 3;
 }
 
 .password-toggle:hover {
   color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
 }
 
-.password-toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+/* Error Styles */
+.form-input.error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.error-text {
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.error-slide-enter-active,
+.error-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.error-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.error-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 /* Form Options */
@@ -613,253 +739,299 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 0.5rem 0;
+  margin: 8px 0;
 }
 
-.checkbox-label {
+.checkbox-wrapper {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 12px;
   cursor: pointer;
-  color: #4a5568;
-  font-size: 0.9rem;
-  position: relative;
+  user-select: none;
 }
 
-.checkbox-label input[type="checkbox"] {
-  opacity: 0;
-  position: absolute;
+.checkbox-input {
+  display: none;
 }
 
-.checkmark {
-  width: 18px;
-  height: 18px;
-  border: 2px solid #e2e8f0;
-  border-radius: 4px;
+.checkbox-custom {
   position: relative;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.checkbox-label input[type="checkbox"]:checked + .checkmark {
+.checkbox-input:checked + .checkbox-custom {
   background: linear-gradient(135deg, #667eea, #764ba2);
   border-color: #667eea;
+  transform: scale(1.1);
 }
 
-.checkbox-label input[type="checkbox"]:checked + .checkmark::after {
-  content: '✓';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.checkbox-icon {
   color: white;
   font-size: 12px;
-  font-weight: bold;
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.2s ease;
+}
+
+.checkbox-input:checked + .checkbox-custom .checkbox-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.checkbox-text {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .forgot-link {
   color: #667eea;
   text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: color 0.3s ease;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
 }
 
 .forgot-link:hover {
-  color: #764ba2;
-  text-decoration: underline;
+  color: #5a67d8;
+  transform: translateX(2px);
 }
 
 /* Login Button */
-.login-btn {
-  width: 100%;
-  padding: 1rem;
+.login-button {
+  position: relative;
   background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   border: none;
-  border-radius: 12px;
-  font-size: 1rem;
+  padding: 16px 32px;
+  border-radius: 16px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  position: relative;
+  margin-top: 8px;
   overflow: hidden;
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
 }
 
-.login-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s;
-}
-
-.login-btn:hover::before {
-  left: 100%;
-}
-
-.login-btn:hover:not(:disabled) {
+.login-button:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
 }
 
-.login-btn:disabled {
+.login-button:active {
+  transform: translateY(0);
+}
+
+.login-button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-  transform: none;
+  transform: none !important;
 }
 
-.login-btn.loading {
-  background: linear-gradient(135deg, #a0aec0, #718096);
-}
-
-.btn-loading {
+.button-content {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: center;
+  gap: 10px;
+  position: relative;
+  z-index: 2;
 }
 
-.btn-spinner {
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+}
+
+.spinner-ring {
   width: 20px;
   height: 20px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-left: 2px solid white;
+  border-top: 2px solid white;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-.btn-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.button-ripple {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.6s ease;
 }
 
-/* Demo Section */
-.demo-section {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
-  border: 1px solid rgba(102, 126, 234, 0.2);
-  border-radius: 12px;
-  padding: 1rem;
-  margin-top: 1rem;
+.login-button:active .button-ripple {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Divider */
+.divider {
+  margin: 32px 0;
+  position: relative;
   text-align: center;
 }
 
-.demo-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #4a5568;
-  margin: 0 0 0.5rem 0;
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
 }
 
-.demo-credentials {
+.divider-text {
+  background: rgba(255, 255, 255, 0.95);
+  color: #9ca3af;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Social Login */
+.social-login {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: #667eea;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.social-button {
+  width: 48px;
+  height: 48px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.social-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.social-button.google:hover {
+  border-color: #ea4335;
+  color: #ea4335;
+}
+
+.social-button.microsoft:hover {
+  border-color: #00a1f1;
+  color: #00a1f1;
+}
+
+.social-button.apple:hover {
+  border-color: #000;
+  color: #000;
 }
 
 /* Footer */
 .login-footer {
   text-align: center;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
 }
 
-.login-footer p {
-  color: #a0aec0;
-  font-size: 0.85rem;
+.footer-text {
+  color: #6b7280;
+  font-size: 14px;
   margin: 0;
 }
 
-/* Responsive Design */
-@media (max-width: 640px) {
-  .login-container {
-    padding: 0.5rem;
-  }
-  
-  .login-card {
-    padding: 1.5rem;
-    border-radius: 16px;
-    max-height: 95vh;
-  }
-  
-  .brand-title {
-    font-size: 1.5rem;
-  }
-  
-  .form-title {
-    font-size: 1.25rem;
-  }
-  
-  .form-options {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
+.signup-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
 }
 
-@media (max-width: 480px) {
-  .login-card {
-    padding: 1.25rem;
-    max-height: 98vh;
-  }
-  
-  .brand-logo {
-    width: 50px;
-    height: 50px;
-    font-size: 1.25rem;
-  }
-  
-  .brand-title {
-    font-size: 1.25rem;
-  }
-  
-  .form-input {
-    padding: 0.75rem 1rem;
-  }
+.signup-link:hover {
+  color: #5a67d8;
+  text-decoration: underline;
 }
 
-@media (max-height: 700px) {
-  .login-card {
-    max-height: 95vh;
-    padding: 1.5rem 2rem;
-  }
-  
-  .brand-section {
-    margin-bottom: 1rem;
-  }
-  
-  .form-header {
-    margin-bottom: 1rem;
-  }
-  
-  .login-form {
-    gap: 0.75rem;
-  }
+/* Alert Styles */
+.alert {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 300px;
+  max-width: 90%;
+  padding: 16px 24px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+.alert.success {
+  background: #d1fae5;
+  border: 1px solid #10b981;
+  color: #065f46;
+}
+.alert.error {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
 }
 
-/* Font Import */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-/* Global Font Smoothing */
-body {
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.alert.warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #78350f;
 }
-</style>
+.alert.info {
+  background: #dbeafe;
+  border: 1px solid #3b82f6;
+  color: #1e40af;
+}
+.alert-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.alert-icon {
+  font-size: 20px;
+}
+.alert-message {
+  font-size: 14px;
+  font-weight: 500;
+}
+.alert-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
 
+</Style>
 
