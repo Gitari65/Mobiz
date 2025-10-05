@@ -23,92 +23,158 @@
     <!-- Navigation Menu -->
     <nav class="navigation">
   <ul class="nav">
-        <li class="nav-item">
-          <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
-            <div class="link-content">
-              <i class="fas fa-tachometer-alt nav-icon"></i>
-              <span class="nav-text">Dashboard</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <li class="nav-item">
-          <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
-            <div class="link-content">
-              <i class="fas fa-cash-register nav-icon"></i>
-              <span class="nav-text">POS Sales</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <li class="nav-item">
-          <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
-            <div class="link-content">
-              <i class="fas fa-box nav-icon"></i>
-              <span class="nav-text">Products</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <li class="nav-item">
-          <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
-            <div class="link-content">
-              <i class="fas fa-warehouse nav-icon"></i>
-              <span class="nav-text">Inventory</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <li class="nav-item">
-          <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
-            <div class="link-content">
-              <i class="fas fa-chart-bar nav-icon"></i>
-              <span class="nav-text">Reports</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <li class="nav-item">
-          <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
-            <div class="link-content">
-              <i class="fas fa-receipt nav-icon"></i>
-              <span class="nav-text">Expenses</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        <li class="nav-item" v-if="isAdmin">
-          <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
-            <div class="link-content">
-              <i class="fas fa-cogs nav-icon"></i>
-              <span class="nav-text">Admin Customization</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        <li class="nav-item" v-if="isSuperUser">
-          <router-link to="/super-user" class="nav-link" @click="setActiveItem('superuser')">
-            <div class="link-content">
-              <i class="fas fa-user-shield nav-icon"></i>
-              <span class="nav-text">Super User Dashboard</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-      </ul>
-    </nav>
+    <!-- Admin/User Menus: Only show if NOT super user -->
+    <template v-if="!isSuperUser">
+      <li class="nav-item">
+        <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
+          <div class="link-content">
+            <i class="fas fa-tachometer-alt nav-icon"></i>
+            <span class="nav-text">Dashboard</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
+          <div class="link-content">
+            <i class="fas fa-cash-register nav-icon"></i>
+            <span class="nav-text">POS Sales</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
+          <div class="link-content">
+            <i class="fas fa-box nav-icon"></i>
+            <span class="nav-text">Products</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
+          <div class="link-content">
+            <i class="fas fa-warehouse nav-icon"></i>
+            <span class="nav-text">Inventory</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
+          <div class="link-content">
+            <i class="fas fa-chart-bar nav-icon"></i>
+            <span class="nav-text">Reports</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
+          <div class="link-content">
+            <i class="fas fa-receipt nav-icon"></i>
+            <span class="nav-text">Expenses</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item" v-if="isAdmin">
+        <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
+          <div class="link-content">
+            <i class="fas fa-cogs nav-icon"></i>
+            <span class="nav-text">Admin Customization</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+    </template>
+    <!-- Super User Menus: Only show if super user -->
+    <template v-if="isSuperUser">
+      <li class="nav-item nav-section-title">
+        <span>Super User</span>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser-dashboard')">
+          <div class="link-content">
+            <i class="fas fa-user-shield nav-icon"></i>
+            <span class="nav-text">Dashboard</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/users" class="nav-link" @click="setActiveItem('superuser-users')">
+          <div class="link-content">
+            <i class="fas fa-users nav-icon"></i>
+            <span class="nav-text">User Management</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/audit-logs" class="nav-link" @click="setActiveItem('superuser-audit')">
+          <div class="link-content">
+            <i class="fas fa-clipboard-list nav-icon"></i>
+            <span class="nav-text">Audit Logs</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/global-settings" class="nav-link" @click="setActiveItem('superuser-settings')">
+          <div class="link-content">
+            <i class="fas fa-globe nav-icon"></i>
+            <span class="nav-text">Global Settings</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/data-export" class="nav-link" @click="setActiveItem('superuser-export')">
+          <div class="link-content">
+            <i class="fas fa-file-export nav-icon"></i>
+            <span class="nav-text">Data Export</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/support" class="nav-link" @click="setActiveItem('superuser-support')">
+          <div class="link-content">
+            <i class="fas fa-headset nav-icon"></i>
+            <span class="nav-text">Support & Communication</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/subscriptions" class="nav-link" @click="setActiveItem('superuser-subscriptions')">
+          <div class="link-content">
+            <i class="fas fa-credit-card nav-icon"></i>
+            <span class="nav-text">Subscription & Billing</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+      <li class="nav-item">
+        <router-link to="/superuser/impersonate" class="nav-link" @click="setActiveItem('superuser-impersonate')">
+          <div class="link-content">
+            <i class="fas fa-user-secret nav-icon"></i>
+            <span class="nav-text">Impersonate Business Admin</span>
+            <div class="nav-indicator"></div>
+          </div>
+        </router-link>
+      </li>
+    </template>
+  </ul>
+  </nav>
 
-    <!-- Loading Spinner for Sidebar Operations -->
+    <!-- Loading Spinner -->
     <div v-if="isLoading" class="sidebar-spinner">
       <div class="spinner"></div>
       <p class="loading-text">Loading...</p>
     </div>
-
     <!-- Footer Section -->
     <div class="sidebar-footer">
       <div class="user-section">
@@ -116,11 +182,10 @@
           <i class="fas fa-user"></i>
         </div>
         <div class="user-info">
-          <p class="user-name">Admin User</p>
-          <p class="user-role">Administrator</p>
+          <p class="user-name">{{ userName }}</p>
+          <p class="user-role">{{ userRoleLabel }}</p>
         </div>
       </div>
-      
       <button class="logout-btn" @click="handleLogout">
         <i class="fas fa-sign-out-alt"></i>
         <span>Logout</span>
@@ -130,7 +195,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -140,6 +205,14 @@ const isLoading = ref(false)
 const activeItem = ref('dashboard')
 const isAdmin = ref(false)
 const isSuperUser = ref(false)
+const userName = ref('')
+const userRole = ref('')
+const userRoleLabel = computed(() => {
+  if (userRole.value === 'superuser') return 'Super User'
+  if (userRole.value === 'admin') return 'Administrator'
+  if (userRole.value === 'user') return 'User'
+  return userRole.value ? userRole.value.charAt(0).toUpperCase() + userRole.value.slice(1) : ''
+})
 
 // Alert system
 const alert = reactive({
@@ -238,9 +311,13 @@ onMounted(() => {
     const userData = JSON.parse(localStorage.getItem('userData'))
     isAdmin.value = userData && userData.role && userData.role.name === 'admin'
     isSuperUser.value = userData && userData.role && userData.role.name === 'superuser'
+    userName.value = userData && userData.name ? userData.name : ''
+    userRole.value = userData && userData.role && userData.role.name ? userData.role.name : ''
   } catch (e) {
     isAdmin.value = false
     isSuperUser.value = false
+    userName.value = ''
+    userRole.value = ''
   }
 })
 

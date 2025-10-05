@@ -30,6 +30,48 @@ const routes = [
       requiresSuperUser: true
     }
   },
+  {
+    path: '/superuser/users',
+    name: 'SuperUserUsers',
+    component: () => import('../pages/superuser/UsersPage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
+  {
+    path: '/superuser/audit-logs',
+    name: 'SuperUserAuditLogs',
+    component: () => import('../pages/superuser/AuditLogsPage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
+  {
+    path: '/superuser/global-settings',
+    name: 'SuperUserGlobalSettings',
+    component: () => import('../pages/superuser/GlobalSettingsPage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
+  {
+    path: '/superuser/data-export',
+    name: 'SuperUserDataExport',
+    component: () => import('../pages/superuser/DataExportPage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
+  {
+    path: '/superuser/support',
+    name: 'SuperUserSupport',
+    component: () => import('../pages/superuser/SupportPage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
+  {
+    path: '/superuser/subscriptions',
+    name: 'SuperUserSubscriptions',
+    component: () => import('../pages/superuser/SubscriptionsPage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
+  {
+    path: '/superuser/impersonate',
+    name: 'SuperUserImpersonate',
+    component: () => import('../pages/superuser/ImpersonatePage.vue'),
+    meta: { requiresAuth: true, requiresSuperUser: true }
+  },
   { 
     path: '/login', 
     name: 'Login', 

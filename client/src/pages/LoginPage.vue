@@ -222,11 +222,13 @@ async function handleLogin() {
         localStorage.removeItem('rememberedUser')
       }
 
+      // Set dummy authToken for router compatibility
+      localStorage.setItem('authToken', 'dummy-token')
       // Redirect based on role (backend may return `role` string or user.role.name)
       const role = data.role || (data.user && data.user.role && data.user.role.name)
       setTimeout(() => {
         if (role === 'superuser') {
-          router.push('/super-user') // <- normalized route
+          router.push('/superuser')
         } else {
           router.push('/')
         }
