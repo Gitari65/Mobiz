@@ -462,8 +462,6 @@ onMounted(() => {
   padding: 1.5rem 0;
   text-align: center;
 }
-</style>
-
 .impersonate-controls {
   margin-bottom: 1rem;
 }
@@ -845,3 +843,11 @@ onMounted(() => {
 .user-table tr:nth-child(even) {
   background: #e9eaf7;
 }
+</style>
+
+<style>
+.super-user-dashboard {
+  padding: 20px;
+  background-color: #f0f0f0;
+}
+</style>

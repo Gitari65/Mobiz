@@ -22,6 +22,7 @@
 
     <!-- Navigation Menu -->
     <nav class="navigation">
+<<<<<<< HEAD
   <ul class="nav">
     <!-- Admin/User Menus: Only show if NOT super user -->
     <template v-if="!isSuperUser">
@@ -169,6 +170,131 @@
     </template>
   </ul>
   </nav>
+=======
+      <ul class="nav">
+        <!-- Dashboard - Available to all roles -->
+        <li class="nav-item">
+          <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
+            <div class="link-content">
+              <i class="fas fa-tachometer-alt nav-icon"></i>
+              <span class="nav-text">Dashboard</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- POS Sales - Available to all except cashier (based on your original logic) -->
+        <li class="nav-item" v-if="canViewPOSSales">
+          <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
+            <div class="link-content">
+              <i class="fas fa-cash-register nav-icon"></i>
+              <span class="nav-text">POS Sales</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Products - Available to admin and superuser -->
+        <li class="nav-item" v-if="canViewProducts">
+          <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
+            <div class="link-content">
+              <i class="fas fa-box nav-icon"></i>
+              <span class="nav-text">Products</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Inventory - Available to admin and superuser -->
+        <li class="nav-item" v-if="canViewInventory">
+          <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
+            <div class="link-content">
+              <i class="fas fa-warehouse nav-icon"></i>
+              <span class="nav-text">Inventory</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Reports - Available to admin and superuser -->
+        <li class="nav-item" v-if="canViewReports">
+          <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
+            <div class="link-content">
+              <i class="fas fa-chart-bar nav-icon"></i>
+              <span class="nav-text">Reports</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Expenses - Admin only -->
+        <li class="nav-item" v-if="isAdmin">
+          <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
+            <div class="link-content">
+              <i class="fas fa-receipt nav-icon"></i>
+              <span class="nav-text">Expenses</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Admin Customization - Admin only -->
+        <li class="nav-item" v-if="isAdmin">
+          <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
+            <div class="link-content">
+              <i class="fas fa-cogs nav-icon"></i>
+              <span class="nav-text">Admin Customization</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Super User Dashboard - Super User only -->
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/super-user" class="nav-link" @click="setActiveItem('superuser')">
+            <div class="link-content">
+              <i class="fas fa-user-shield nav-icon"></i>
+              <span class="nav-text">Super User Dashboard</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- User Management - Super User only -->
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/user-management" class="nav-link" @click="setActiveItem('user-management')">
+            <div class="link-content">
+              <i class="fas fa-users-cog nav-icon"></i>
+              <span class="nav-text">User Management</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- System Logs - Super User only -->
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/system-logs" class="nav-link" @click="setActiveItem('system-logs')">
+            <div class="link-content">
+              <i class="fas fa-file-alt nav-icon"></i>
+              <span class="nav-text">System Logs</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+        
+        <!-- Settings - Super User only -->
+        <li class="nav-item" v-if="isSuperUser">
+          <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
+            <div class="link-content">
+              <i class="fas fa-sliders-h nav-icon"></i>
+              <span class="nav-text">Settings</span>
+              <div class="nav-indicator"></div>
+            </div>
+          </router-link>
+        </li>
+      </ul>
+    </nav>
+>>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
 
     <!-- Loading Spinner -->
     <div v-if="isLoading" class="sidebar-spinner">
@@ -182,8 +308,13 @@
           <i class="fas fa-user"></i>
         </div>
         <div class="user-info">
+<<<<<<< HEAD
           <p class="user-name">{{ userName }}</p>
           <p class="user-role">{{ userRoleLabel }}</p>
+=======
+          <p class="user-name">{{ userData?.name || 'Unknown User' }}</p>
+          <p class="user-role">{{ formatRoleName(userData?.role?.name) }}</p>
+>>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
         </div>
       </div>
       <button class="logout-btn" @click="handleLogout">
@@ -195,7 +326,11 @@
 </template>
 
 <script setup>
+<<<<<<< HEAD
 import { ref, reactive, onMounted, computed } from 'vue'
+=======
+import { ref, reactive, computed, onMounted } from 'vue'
+>>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -203,8 +338,12 @@ const router = useRouter()
 // Reactive state
 const isLoading = ref(false)
 const activeItem = ref('dashboard')
+const userData = ref(null)
+
+// Role flags
 const isAdmin = ref(false)
 const isSuperUser = ref(false)
+<<<<<<< HEAD
 const userName = ref('')
 const userRole = ref('')
 const userRoleLabel = computed(() => {
@@ -212,6 +351,26 @@ const userRoleLabel = computed(() => {
   if (userRole.value === 'admin') return 'Administrator'
   if (userRole.value === 'user') return 'User'
   return userRole.value ? userRole.value.charAt(0).toUpperCase() + userRole.value.slice(1) : ''
+=======
+const isCashier = ref(false)
+
+// Computed properties for menu visibility
+const canViewPOSSales = computed(() => {
+  // Based on your original logic: all except cashier
+  return !isCashier.value
+})
+
+const canViewProducts = computed(() => {
+  return isAdmin.value || isSuperUser.value
+})
+
+const canViewInventory = computed(() => {
+  return isAdmin.value || isSuperUser.value
+})
+
+const canViewReports = computed(() => {
+  return isAdmin.value || isSuperUser.value
+>>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
 })
 
 // Alert system
@@ -225,6 +384,16 @@ const alert = reactive({
 // Methods
 const setActiveItem = (item) => {
   activeItem.value = item
+}
+
+const formatRoleName = (roleName) => {
+  if (!roleName) return 'Unknown Role'
+  
+  // Capitalize first letter and handle special cases
+  const formatted = roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase()
+  
+  if (formatted === 'Superuser') return 'Super User'
+  return formatted
 }
 
 const showAlert = (type, message, duration = 3000) => {
@@ -266,6 +435,61 @@ const setLoading = (loading) => {
   isLoading.value = loading
 }
 
+const initializeUserRole = () => {
+  try {
+    const storedUserData = JSON.parse(localStorage.getItem('userData'))
+    
+    if (storedUserData?.role?.name) {
+      userData.value = storedUserData
+      const roleName = storedUserData.role.name.toLowerCase()
+      
+      // Reset all role flags
+      isAdmin.value = false
+      isSuperUser.value = false
+      isCashier.value = false
+      
+      // Set appropriate role flag
+      switch (roleName) {
+        case 'admin':
+        case 'administrator':
+          isAdmin.value = true
+          break
+        case 'superuser':
+        case 'super user':
+        case 'super_user':
+          isSuperUser.value = true
+          break
+        case 'cashier':
+          isCashier.value = true
+          break
+        default:
+          console.warn(`Unknown role: ${roleName}`)
+          // Default to most restrictive role
+          isCashier.value = true
+      }
+      
+      // Debug logging
+      console.log('User Role:', roleName)
+      console.log('Role Flags:', {
+        isAdmin: isAdmin.value,
+        isSuperUser: isSuperUser.value,
+        isCashier: isCashier.value
+      })
+      
+      return true
+    }
+  } catch (error) {
+    console.error('Error parsing user data:', error)
+  }
+  
+  // If no valid user data, default to cashier (most restrictive)
+  userData.value = null
+  isAdmin.value = false
+  isSuperUser.value = false
+  isCashier.value = true
+  return false
+}
+
 const handleLogout = async () => {
   try {
     setLoading(true)
@@ -274,10 +498,16 @@ const handleLogout = async () => {
     // Simulate logout process
     await new Promise(resolve => setTimeout(resolve, 1000))
     
-    // Clear any stored auth data
+    // Clear stored auth data
     localStorage.removeItem('authToken')
     localStorage.removeItem('userData')
     localStorage.removeItem('rememberMe')
+    
+    // Reset user state
+    userData.value = null
+    isAdmin.value = false
+    isSuperUser.value = false
+    isCashier.value = false
     
     showAlert('success', 'Logged out successfully!', 1500)
     
@@ -285,6 +515,7 @@ const handleLogout = async () => {
       router.push('/login')
     }, 1500)
   } catch (error) {
+    console.error('Logout error:', error)
     showAlert('error', 'Error during logout')
   } finally {
     setLoading(false)
@@ -293,8 +524,19 @@ const handleLogout = async () => {
 
 // Lifecycle
 onMounted(() => {
-  // Set initial active item based on current route
+  // Initialize user role
+  const hasValidUser = initializeUserRole()
+  
+  if (!hasValidUser) {
+    console.warn('No valid user data found, redirecting to login')
+    showAlert('warning', 'Please log in to continue')
+    setTimeout(() => router.push('/login'), 2000)
+    return
+  }
+  
+  // Set active item based on current route
   const currentPath = router.currentRoute.value.path
+<<<<<<< HEAD
   if (currentPath === '/') {
     activeItem.value = 'dashboard'
   } else if (currentPath.includes('/sales')) {
@@ -318,17 +560,79 @@ onMounted(() => {
     isSuperUser.value = false
     userName.value = ''
     userRole.value = ''
+=======
+  const routeMapping = {
+    '/': 'dashboard',
+    '/sales': 'sales',
+    '/products': 'products',
+    '/inventory': 'inventory',
+    '/reports': 'reports',
+    '/expenses': 'expenses',
+    '/admin-customization': 'admin-customization',
+    '/super-user': 'superuser',
+    '/user-management': 'user-management',
+    '/system-logs': 'system-logs',
+    '/settings': 'settings'
+>>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
   }
+  
+  // Find matching route
+  const matchedRoute = Object.keys(routeMapping).find(route => 
+    currentPath === route || (route !== '/' && currentPath.includes(route))
+  )
+  
+  activeItem.value = matchedRoute ? routeMapping[matchedRoute] : 'dashboard'
 })
 
 // Expose methods for parent components
 defineExpose({
   showAlert,
   setLoading,
-  dismissAlert
+  dismissAlert,
+  initializeUserRole
 })
 </script>
 
+<style scoped>
+/* Add your existing styles here */
+.sidebar {
+  /* Your sidebar styles */
+}
+
+.sidebar-alert {
+  /* Alert styles */
+}
+
+.brand-section {
+  /* Brand styles */
+}
+
+.navigation {
+  /* Navigation styles */
+}
+
+.nav-item {
+  /* Nav item styles */
+}
+
+.nav-link {
+  /* Nav link styles */
+}
+
+.sidebar-footer {
+  /* Footer styles */
+}
+
+.user-section {
+  /* User section styles */
+}
+
+.logout-btn {
+  /* Logout button styles */
+}
+
+/* Add any additional styles you need */
+</style>
 <style scoped>
 /* Modern Sidebar Component Styles */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
