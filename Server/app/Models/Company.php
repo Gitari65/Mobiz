@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Company extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'email', 'details', 'active'];
+    protected $fillable = [ 'name', 'category', 'phone', 'email', 'active'];
 
     public function users()
     {

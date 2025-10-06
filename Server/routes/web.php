@@ -8,6 +8,16 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\CompanyController;
+
+//company 
+
+Route::post('/register-company', [CompanyController::class, 'registerCompany']);
+Route::get('/companies/pending', [CompanyController::class, 'index']);
+Route::put('/companies/{id}/approve', [CompanyController::class, 'approve']);
+Route::delete('/companies/{id}/reject', [CompanyController::class, 'reject']);
+
+
 
 // AUTHENTICATION & USER MANAGEMENT
 Route::post('/register', [AuthController::class, 'register']);

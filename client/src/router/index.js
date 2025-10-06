@@ -1,15 +1,15 @@
 import SuperUserDashboard from '../pages/SuperUserDashboard.vue'
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardPage from '../pages/DashboardPage.vue'
-import InventoryPage from '../pages/InventoryPage.vue'
-import ProductsPage from '../pages/ProductsPage.vue'
-import SalesPage from '../pages/SalesPage.vue'
-import ReportsPage from '../pages/ReportPage.vue'
-import ExpensePage from '../pages/ExpensePage.vue'
+import DashboardPage from '../pages/Users/DashboardPage.vue'
+import InventoryPage from '../pages/Users/InventoryPage.vue'
+import ProductsPage from '../pages/Users/ProductsPage.vue'
+import SalesPage from '../pages/Users/SalesPage.vue'
+import ReportsPage from '../pages/Users/ReportPage.vue'
+import ExpensePage from '../pages/Users/ExpensePage.vue'
 
-import LoginPage from '../pages/LoginPage.vue'
-import SignupPage from '../pages/SignupPage.vue'
+import LoginPage from '../pages/Auth/LoginPage.vue'
+import SignupPage from '../pages/Auth/SignupPage.vue'
 
 // Helper function to check if user is authenticated
 const isAuthenticated = () => {
@@ -33,7 +33,7 @@ const routes = [
   {
     path: '/superuser/users',
     name: 'SuperUserUsers',
-    component: () => import('../pages/superuser/UsersPage.vue'),
+    component: () => import('../pages/superuser/UserManagementPage.vue'),
     meta: { requiresAuth: true, requiresSuperUser: true }
   },
   {

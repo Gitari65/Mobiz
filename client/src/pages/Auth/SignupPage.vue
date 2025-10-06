@@ -102,13 +102,34 @@ function showAlert(message, type = 'success') {
   setTimeout(() => (alert.value.show = false), 3000)
 }
 async function handleSignup() {
-  if (!form.value.ownerName || !form.value.ownerPosition) {
-    showAlert('Please fill all owner details.', 'error')
+  if (form.value.password !== form.value.confirmPassword) {
+    showAlert('Passwords do not match.', 'error')
     return
   }
-  // TODO: Replace with real API call
-  showAlert('Signup submitted! Awaiting approval.', 'success')
-  setTimeout(() => router.push('/login'), 2000)
+  try {
+    const response = await fetch('http://localhost:8000/register-company', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: form.value.email,
+        password: form.value.password,
+        business_name: form.value.businessName,
+        category: form.value.category,
+        phone: form.value.phone,
+        owner_name: form.value.ownerName,
+        owner_position: form.value.ownerPosition
+      })
+    })
+    const data = await response.json()
+    if (response.ok) {
+      showAlert('Registration successful! Awaiting approval.', 'success')
+      setTimeout(() => router.push('/login'), 3000)
+    } else {
+      showAlert(data.message || 'Registration failed. Please try again.', 'error')
+    }
+  } catch (error) {
+    showAlert('An error occurred. Please try again.', 'error')
+  }
 }
 </script>
 

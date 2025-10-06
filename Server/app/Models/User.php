@@ -33,6 +33,15 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Role::class);
     }
+    /**
+     * Get the company for the user.
+     */
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+
 
     /**
      * Get the user who created this user.
