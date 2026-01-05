@@ -3,7 +3,10 @@
  * API Service for communicating with Laravel backend
  */
 
-const BASE_URL = 'http://localhost:8000/api'
+import axios from 'axios' // added
+
+// Use backend base URL (no extra /api prefix)
+const BASE_URL = 'http://127.0.0.1:8000'
 
 // Default headers for all requests
 const defaultHeaders = {
@@ -53,7 +56,6 @@ const apiRequest = async (endpoint, options = {}) => {
     console.error('API Request failed:', error)
     
     if (error.status) {
-      // Server responded with error
       return {
         success: false,
         error: error.message,
@@ -61,7 +63,6 @@ const apiRequest = async (endpoint, options = {}) => {
         data: error.data
       }
     } else {
-      // Network or other error
       return {
         success: false,
         error: 'Network error or server unavailable',
@@ -85,27 +86,38 @@ export const authAPI = {
       body: JSON.stringify({ email, password })
     })
 
-    if (result.success && result.data.user) {
-      // Transform backend response to frontend format
+    if (result.success && result.data) {
+      const payload = result.data
+      const user = payload.user || payload.data?.user || null
+      const token = payload.token || payload.plainTextToken || payload.data?.token || null
+      const role = payload.role || (user ? (user.role?.name || null) : null)
+      const mustChange = payload.must_change_password ?? payload.data?.must_change_password ?? false
+
+      if (user) {
+        // Persist user session info
+        localStorage.setItem('userData', JSON.stringify({ ...user, role: { name: role } }))
+        localStorage.setItem('isLoggedIn', 'true')
+      }
+
+      if (token) {
+        localStorage.setItem('authToken', token)
+        // Ensure axios (used across app) sends Authorization header immediately
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      }
+
       return {
         success: true,
-        user: {
-          id: result.data.user.id,
-          name: result.data.user.name,
-          email: result.data.user.email,
-          verified: result.data.user.verified,
-          role: {
-            name: result.data.role || result.data.user.role?.name || 'cashier'
-          }
-        },
-        token: 'session_' + Date.now() + '_' + result.data.user.id
+        user,
+        role,
+        token,
+        must_change_password: mustChange
       }
-    } else {
-      return {
-        success: false,
-        message: result.error || 'Login failed',
-        status: result.status
-      }
+    }
+
+    return {
+      success: false,
+      message: result.error || 'Login failed',
+      status: result.status
     }
   },
 
@@ -384,3 +396,6 @@ export const handleAPIError = (error) => {
   
   return errorMessages[error.status] || error.error || 'An unexpected error occurred.'
 }
+
+
+

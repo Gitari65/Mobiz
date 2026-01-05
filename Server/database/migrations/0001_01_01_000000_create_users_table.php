@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();
+            $table->unsignedBigInteger('role_id')->nullable(); // Add this line before any company_id or other FKs
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

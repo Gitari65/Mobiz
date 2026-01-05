@@ -1,853 +1,256 @@
 <template>
-  <div class="superuser-dashboard-container">
-    <div class="dashboard-header">
-      <div class="brand-logo">
-        <i class="fas fa-user-shield"></i>
+  <div class="su-dashboard">
+    <header class="su-header">
+      <div class="su-title">
+        <i class="fas fa-shield-alt"></i>
+        <div>
+          <h1>Super User Dashboard</h1>
+          <p class="muted">Overview — aggregated platform metrics & recent activity</p>
+        </div>
       </div>
-      <h1 class="dashboard-title">Super User Dashboard</h1>
-      <p class="dashboard-subtitle">Access all super user functions from the sidebar menu.</p>
-      <ul class="superuser-menu-list">
-        <li><router-link to="/superuser/users">User Management</router-link></li>
-        <li><router-link to="/superuser/audit-logs">Audit Logs</router-link></li>
-        <li><router-link to="/superuser/global-settings">Global Settings</router-link></li>
-        <li><router-link to="/superuser/data-export">Data Export</router-link></li>
-        <li><router-link to="/superuser/support">Support & Communication</router-link></li>
-        <li><router-link to="/superuser/subscriptions">Subscription & Billing</router-link></li>
-        <li><router-link to="/superuser/impersonate">Impersonate Business Admin</router-link></li>
-      </ul>
-    </div>
+      <div>
+        <button class="btn-refresh" @click="loadOverview" :disabled="loading">
+          <i class="fas fa-sync-alt"></i>
+        </button>
+      </div>
+    </header>
+
+    <section v-if="loading" class="loading">Loading dashboard...</section>
+    <section v-else-if="error" class="error">Error loading dashboard: {{ error }}</section>
+
+    <section v-else class="su-body">
+      <div class="cards">
+        <div class="card">
+          <div class="card-title">Businesses</div>
+          <div class="card-value">{{ overview.totals.total_businesses }}</div>
+          <div class="card-sub">Active subs: {{ overview.totals.active_subscriptions }}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Users</div>
+          <div class="card-value">{{ overview.totals.total_users }}</div>
+          <div class="card-sub">Daily revenue: {{ formatCurrency(overview.totals.daily_revenue) }}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">MRR</div>
+          <div class="card-value">{{ formatCurrency(overview.totals.mrr) }}</div>
+          <div class="card-sub">Queued jobs: {{ overview.system_health.queued_jobs }}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">System</div>
+          <div class="card-value">Failed: {{ overview.system_health.failed_jobs }}</div>
+          <div class="card-sub">Health: <span :class="{'good': overview.system_health.failed_jobs===0, 'warn': overview.system_health.failed_jobs>0}">{{ overview.system_health.failed_jobs===0 ? 'OK' : 'Issues' }}</span></div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>Monthly Signups</h3>
+          <canvas ref="signupsChart" width="600" height="260"></canvas>
+          <div v-if="!chartAvailable" class="chart-fallback">Install Chart.js to see interactive charts</div>
+        </div>
+
+        <div class="chart-card">
+          <h3>Active Businesses (monthly)</h3>
+          <canvas ref="businessChart" width="600" height="260"></canvas>
+          <div v-if="!chartAvailable" class="chart-fallback">Install Chart.js to see interactive charts</div>
+        </div>
+      </div>
+
+      <div class="lower-grid">
+        <div class="activities-card">
+          <h3>Latest Activities</h3>
+          <table class="log-table">
+            <thead>
+              <tr><th>Time</th><th>User</th><th>Action</th><th>Resource</th><th>IP</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="act in overview.latest_activities" :key="act.id">
+                <td>{{ formatDate(act.created_at) }}</td>
+                <td>{{ act.user_name || act.user_id || 'System' }}</td>
+                <td>{{ act.action }}</td>
+                <td>{{ shortResource(act.auditable_type) }}#{{ act.auditable_id }}</td>
+                <td>{{ act.ip_address || '-' }}</td>
+              </tr>
+              <tr v-if="overview.latest_activities.length===0">
+                <td colspan="5" class="empty">No recent activity</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="quick-actions-card">
+          <h3>Quick Admin Actions</h3>
+          <button class="action-btn" @click="goToUsers">Manage Users</button>
+          <button class="action-btn" @click="goToCompanies">Manage Companies</button>
+          <button class="action-btn" @click="goToExports">Start Export</button>
+          <div class="note muted">All actions respect role & policy constraints.</div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
-import { computed } from 'vue'
-// Impersonate Business Admin State
-const businesses = ref([])
-const loadingBusinesses = ref(true)
-const impersonateSearch = ref('')
+import { useRouter } from 'vue-router'
 
-const filteredBusinesses = computed(() => {
-  if (!impersonateSearch.value.trim()) return businesses.value
-  const q = impersonateSearch.value.trim().toLowerCase()
-  return businesses.value.filter(b =>
-    (b.name && b.name.toLowerCase().includes(q))
-  )
+const router = useRouter()
+const overview = reactive({
+  totals: { total_businesses: 0, active_subscriptions: 0, total_users: 0, daily_revenue: 0, mrr: 0 },
+  system_health: { queued_jobs: 0, failed_jobs: 0 },
+  charts: { monthly_signups: { labels: [], data: [] }, active_businesses: { labels: [], data: [] } },
+  latest_activities: []
 })
+const loading = ref(false)
+const error = ref(null)
+const chartAvailable = ref(false)
+let Chart = null
+const signupsChartRef = ref(null)
+const businessChartRef = ref(null)
+let signupsChartInstance = null
+let businessChartInstance = null
 
-async function fetchBusinesses() {
-  loadingBusinesses.value = true
-  try {
-    const res = await axios.get('/api/superuser/businesses')
-    businesses.value = res.data
-  } catch (e) {
-    businesses.value = []
-  } finally {
-    loadingBusinesses.value = false
-  }
-}
-
-async function impersonateAdmin(businessId) {
-  // This should call the backend to set impersonation session/token
-  await axios.post(`/api/superuser/impersonate/${businessId}`)
-  // Redirect to dashboard as that business admin
-  window.location.href = '/'
-}
-// Subscription & Billing State
-const subscriptions = ref([])
-const loadingSubscriptions = ref(true)
-const subscriptionSearch = ref('')
-const showPlanModal = ref(false)
-const selectedSubscription = ref({})
-const newPlan = ref('')
-const availablePlans = ref(['Basic', 'Standard', 'Premium'])
-
-const filteredSubscriptions = computed(() => {
-  if (!subscriptionSearch.value.trim()) return subscriptions.value
-  const q = subscriptionSearch.value.trim().toLowerCase()
-  return subscriptions.value.filter(s =>
-    (s.business_name && s.business_name.toLowerCase().includes(q)) ||
-    (s.plan && s.plan.toLowerCase().includes(q))
-  )
-})
-
-async function fetchSubscriptions() {
-  loadingSubscriptions.value = true
-  try {
-    const res = await axios.get('/api/superuser/subscriptions')
-    subscriptions.value = res.data
-  } catch (e) {
-    subscriptions.value = []
-  } finally {
-    loadingSubscriptions.value = false
-  }
+// set auth header if token exists
+const token = localStorage.getItem('authToken')
+if (token) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
 }
 
-function changePlan(sub) {
-  selectedSubscription.value = sub
-  newPlan.value = sub.plan
-  showPlanModal.value = true
+function formatCurrency(v) {
+  if (v == null) return '-'
+  return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(v)
 }
-function closePlanModal() {
-  showPlanModal.value = false
+function formatDate(dt) {
+  if (!dt) return ''
+  const d = new Date(dt)
+  return d.toLocaleString()
 }
-async function savePlanChange() {
-  await axios.post(`/api/superuser/subscriptions/${selectedSubscription.value.id}/change-plan`, { plan: newPlan.value })
-  showPlanModal.value = false
-  fetchSubscriptions()
-}
-async function deactivateSubscription(id) {
-  await axios.post(`/api/superuser/subscriptions/${id}/deactivate`)
-  fetchSubscriptions()
-}
-async function activateSubscription(id) {
-  await axios.post(`/api/superuser/subscriptions/${id}/activate`)
-  fetchSubscriptions()
-}
-// Support & Communication State
-const tickets = ref([])
-const loadingTickets = ref(true)
-const ticketSearch = ref('')
-const showTicketModal = ref(false)
-const selectedTicket = ref({})
-const ticketReply = ref('')
-
-const filteredTickets = computed(() => {
-  if (!ticketSearch.value.trim()) return tickets.value
-  const q = ticketSearch.value.trim().toLowerCase()
-  return tickets.value.filter(t =>
-    (t.business_name && t.business_name.toLowerCase().includes(q)) ||
-    (t.user_name && t.user_name.toLowerCase().includes(q)) ||
-    (t.subject && t.subject.toLowerCase().includes(q))
-  )
-})
-
-async function fetchTickets() {
-  loadingTickets.value = true
-  try {
-    const res = await axios.get('/api/superuser/support-tickets')
-    tickets.value = res.data
-  } catch (e) {
-    tickets.value = []
-  } finally {
-    loadingTickets.value = false
-  }
+function shortResource(type) {
+  if (!type) return ''
+  const parts = type.split('\\')
+  return parts[parts.length-1]
 }
 
-function viewTicket(ticket) {
-  selectedTicket.value = ticket
-  ticketReply.value = ''
-  showTicketModal.value = true
-}
-function closeTicketModal() {
-  showTicketModal.value = false
-}
-async function sendReply() {
-  if (!ticketReply.value.trim()) return
-  await axios.post(`/api/superuser/support-tickets/${selectedTicket.value.id}/reply`, { message: ticketReply.value })
-  ticketReply.value = ''
-  showTicketModal.value = false
-  fetchTickets()
-}
-// Data Export State
-const exporting = ref(false)
-
-async function exportBusinesses(format) {
-  exporting.value = true
-  try {
-    const res = await axios.get(`/api/superuser/export/businesses?format=${format}`, { responseType: 'blob' })
-    downloadFile(res.data, `businesses.${format}`)
-  } finally {
-    exporting.value = false
-  }
-}
-async function exportUsers(format) {
-  exporting.value = true
-  try {
-    const res = await axios.get(`/api/superuser/export/users?format=${format}`, { responseType: 'blob' })
-    downloadFile(res.data, `users.${format}`)
-  } finally {
-    exporting.value = false
-  }
-}
-function downloadFile(blob, filename) {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  window.URL.revokeObjectURL(url)
-}
-// Global Settings State
-const categories = ref([])
-const newCategory = ref('')
-const features = ref([
-  { key: 'multi_currency', name: 'Multi-Currency Support', enabled: false },
-  { key: 'advanced_reports', name: 'Advanced Reports', enabled: false },
-  { key: 'api_access', name: 'API Access', enabled: false }
-])
-const announcement = ref('')
-
-async function fetchCategories() {
-  try {
-    const res = await axios.get('/api/superuser/business-categories')
-    categories.value = res.data
-  } catch (e) {
-    categories.value = []
-  }
-}
-async function addCategory() {
-  if (!newCategory.value.trim()) return
-  await axios.post('/api/superuser/business-categories', { name: newCategory.value })
-  newCategory.value = ''
-  fetchCategories()
-}
-async function removeCategory(cat) {
-  await axios.delete(`/api/superuser/business-categories/${encodeURIComponent(cat)}`)
-  fetchCategories()
-}
-async function toggleFeature(feature) {
-  await axios.post('/api/superuser/feature-toggles', { key: feature.key, enabled: feature.enabled })
-}
-async function fetchFeatures() {
-  try {
-    const res = await axios.get('/api/superuser/feature-toggles')
-    features.value = res.data
-  } catch (e) {}
-}
-async function fetchAnnouncement() {
-  try {
-    const res = await axios.get('/api/superuser/announcement')
-    announcement.value = res.data
-  } catch (e) {}
-}
-async function saveAnnouncement() {
-  await axios.post('/api/superuser/announcement', { text: announcement.value })
-}
-// Audit Logs State
-const logs = ref([])
-const loadingLogs = ref(true)
-const logSearch = ref('')
-
-const filteredLogs = computed(() => {
-  if (!logSearch.value.trim()) return logs.value
-  const q = logSearch.value.trim().toLowerCase()
-  return logs.value.filter(l =>
-    (l.business_name && l.business_name.toLowerCase().includes(q)) ||
-    (l.user_name && l.user_name.toLowerCase().includes(q)) ||
-    (l.action && l.action.toLowerCase().includes(q))
-  )
-})
-
-async function fetchLogs() {
-  loadingLogs.value = true
-  try {
-    const res = await axios.get('/api/superuser/audit-logs')
-    logs.value = res.data
-  } catch (e) {
-    logs.value = []
-  } finally {
-    loadingLogs.value = false
-  }
-}
-
-// User Management State
-const users = ref([])
-const loadingUsers = ref(true)
-const userSearch = ref('')
-
-const filteredUsers = computed(() => {
-  if (!userSearch.value.trim()) return users.value
-  const q = userSearch.value.trim().toLowerCase()
-  return users.value.filter(u =>
-    (u.name && u.name.toLowerCase().includes(q)) ||
-    (u.email && u.email.toLowerCase().includes(q)) ||
-    (u.business_name && u.business_name.toLowerCase().includes(q))
-  )
-})
-
-async function fetchUsers() {
-  loadingUsers.value = true
-  try {
-    const res = await axios.get('/api/superuser/users')
-    users.value = res.data
-  } catch (e) {
-    users.value = []
-  } finally {
-    loadingUsers.value = false
-  }
-}
-
-async function deactivateUser(id) {
-  await axios.post(`/api/superuser/users/${id}/deactivate`)
-  fetchUsers()
-}
-async function activateUser(id) {
-  await axios.post(`/api/superuser/users/${id}/activate`)
-  fetchUsers()
-}
-
-const loading = ref(true)
-const pendingCompanies = ref([])
-const allCompanies = ref([])
-
-async function fetchCompanies() {
+async function loadOverview() {
   loading.value = true
+  error.value = null
   try {
-    // Replace with your backend endpoints
-    const [pendingRes, allRes] = await Promise.all([
-      axios.get('/api/superuser/companies?status=pending'),
-      axios.get('/api/superuser/companies')
-    ])
-    pendingCompanies.value = pendingRes.data
-    allCompanies.value = allRes.data
+    const res = await axios.get('/dashboard/overview')
+    const data = res.data
+    // merge safely
+    Object.assign(overview.totals, data.totals || {})
+    Object.assign(overview.system_health, data.system_health || {})
+    overview.charts.monthly_signups = data.charts?.monthly_signups || { labels: [], data: [] }
+    overview.charts.active_businesses = data.charts?.active_businesses || { labels: [], data: [] }
+    overview.latest_activities = data.latest_activities || []
+    await ensureCharts()
+    renderCharts()
   } catch (e) {
-    // Handle error
-    pendingCompanies.value = []
-    allCompanies.value = []
+    console.error(e)
+    error.value = (e?.response?.data?.message) || e.message || 'Failed to load overview'
   } finally {
     loading.value = false
   }
 }
 
-async function approveCompany(id) {
-  await axios.post(`/api/superuser/companies/${id}/approve`)
-  fetchCompanies()
-}
-async function rejectCompany(id) {
-  await axios.post(`/api/superuser/companies/${id}/reject`)
-  fetchCompanies()
-}
-async function deactivateCompany(id) {
-  await axios.post(`/api/superuser/companies/${id}/deactivate`)
-  fetchCompanies()
-}
-async function activateCompany(id) {
-  await axios.post(`/api/superuser/companies/${id}/activate`)
-  fetchCompanies()
+async function ensureCharts() {
+  if (chartAvailable.value) return
+  try {
+    const mod = await import('chart.js/auto')
+    Chart = mod.default || mod
+    chartAvailable.value = true
+  } catch (err) {
+    // Chart.js not installed; keep chartAvailable false and show fallback
+    console.warn('Chart.js not available:', err)
+    chartAvailable.value = false
+  }
 }
 
-onMounted(fetchCompanies)
-onMounted(fetchUsers)
-onMounted(fetchLogs)
+function renderCharts() {
+  if (!chartAvailable.value) return
+  // destroy existing
+  if (signupsChartInstance) { signupsChartInstance.destroy(); signupsChartInstance = null }
+  if (businessChartInstance) { businessChartInstance.destroy(); businessChartInstance = null }
+
+  const signupsCtx = signupsChartRef.value && signupsChartRef.value.getContext ? signupsChartRef.value.getContext('2d') : null
+  const businessCtx = businessChartRef.value && businessChartRef.value.getContext ? businessChartRef.value.getContext('2d') : null
+
+  if (signupsCtx) {
+    signupsChartInstance = new Chart(signupsCtx, {
+      type: 'line',
+      data: {
+        labels: overview.charts.monthly_signups.labels,
+        datasets: [{
+          label: 'Signups',
+          data: overview.charts.monthly_signups.data,
+          backgroundColor: 'rgba(102,126,234,0.15)',
+          borderColor: 'rgba(102,126,234,0.9)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    })
+  }
+
+  if (businessCtx) {
+    businessChartInstance = new Chart(businessCtx, {
+      type: 'bar',
+      data: {
+        labels: overview.charts.active_businesses.labels,
+        datasets: [{
+          label: 'New Businesses',
+          data: overview.charts.active_businesses.data,
+          backgroundColor: 'rgba(72,187,120,0.9)'
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    })
+  }
+}
+
+// quick nav
+function goToUsers() { router.push('/user-management') }
+function goToCompanies() { router.push('/admin-customization') }
+function goToExports() { router.push('/data-export') }
+
 onMounted(() => {
-  fetchCategories()
-  fetchFeatures()
-  fetchAnnouncement()
-  fetchTickets()
-  fetchSubscriptions()
-  fetchBusinesses()
+  loadOverview()
 })
 </script>
 
 <style scoped>
-.superuser-dashboard-container {
-  max-width: 1100px;
-  margin: 2rem auto;
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 8px 32px rgba(102,126,234,0.08);
-  padding: 2.5rem 2rem;
-}
-.dashboard-header {
-  text-align: center;
-  margin-bottom: 2.5rem;
-}
-.brand-logo {
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 1rem;
-  font-size: 2rem;
-  color: white;
-}
-.dashboard-title {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #2d3748;
-  margin: 0 0 0.25rem 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.dashboard-subtitle {
-  color: #718096;
-  margin: 0;
-  font-size: 1.1rem;
-}
-.dashboard-section {
-  margin-bottom: 2.5rem;
-}
-.company-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  background: #f7fafc;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.company-table th, .company-table td {
-  padding: 0.85rem 1rem;
-  text-align: left;
-}
-.company-table th {
-  background: #667eea;
-  color: #fff;
-  font-weight: 600;
-}
-.company-table tr:nth-child(even) {
-  background: #e9eaf7;
-}
-.status {
-  padding: 0.35em 0.9em;
-  border-radius: 8px;
-  font-size: 0.95em;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-.status.pending {
-  background: #fff5e6;
-  color: #d69e2e;
-}
-.status.active {
-  background: #e6fffa;
-  color: #2c7a7b;
-}
-.status.inactive {
-  background: #fff5f5;
-  color: #c53030;
-}
-.approve-btn, .reject-btn, .deactivate-btn, .activate-btn {
-  border: none;
-  border-radius: 8px;
-  padding: 0.5em 1.1em;
-  font-weight: 600;
-  cursor: pointer;
-  margin-right: 0.5em;
-  transition: background 0.2s;
-}
-.approve-btn {
-  background: linear-gradient(135deg, #48bb78, #38a169);
-  color: #fff;
-}
-.reject-btn {
-  background: linear-gradient(135deg, #e53e3e, #c53030);
-  color: #fff;
-}
-.deactivate-btn {
-  background: linear-gradient(135deg, #f6ad55, #ed8936);
-  color: #fff;
-}
-.activate-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
-}
-.loading {
-  color: #667eea;
-  font-weight: 500;
-  padding: 1.5rem 0;
-  text-align: center;
-}
-.empty {
-  color: #a0aec0;
-  font-size: 1.1rem;
-  padding: 1.5rem 0;
-  text-align: center;
-}
-.impersonate-controls {
-  margin-bottom: 1rem;
-}
-.impersonate-search {
-  padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 100%;
-  max-width: 350px;
-}
-.impersonate-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  background: #f7fafc;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.impersonate-table th, .impersonate-table td {
-  padding: 0.7rem 1rem;
-  text-align: left;
-}
-.impersonate-table th {
-  background: #764ba2;
-  color: #fff;
-  font-weight: 600;
-}
-.impersonate-table tr:nth-child(even) {
-  background: #e9eaf7;
-}
-.impersonate-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.4rem 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-}
+.su-dashboard { max-width: 1200px; margin: 2rem auto; padding: 1.5rem; font-family: Inter, system-ui, -apple-system; }
+.su-header { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin-bottom:1rem; }
+.su-title { display:flex; align-items:center; gap:1rem; }
+.su-title i { font-size:2rem; color:#667eea; background:rgba(102,126,234,0.08); padding:0.5rem; border-radius:10px; }
+.su-title h1 { margin:0; font-size:1.5rem; }
+.muted { color:#6b7280; margin:0; }
 
-.subscription-controls {
-  margin-bottom: 1rem;
-}
-.subscription-search {
-  padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 100%;
-  max-width: 350px;
-}
-.subscription-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  background: #f7fafc;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.subscription-table th, .subscription-table td {
-  padding: 0.7rem 1rem;
-  text-align: left;
-}
-.subscription-table th {
-  background: #38a169;
-  color: #fff;
-  font-weight: 600;
-}
-.subscription-table tr:nth-child(even) {
-  background: #e9eaf7;
-}
-.change-plan-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.4rem 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-right: 0.5em;
-}
-.plan-modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.plan-modal {
-  background: #fff;
-  border-radius: 16px;
-  padding: 2rem 2.5rem;
-  max-width: 400px;
-  width: 100%;
-  box-shadow: 0 8px 32px rgba(102,126,234,0.12);
-}
-.plan-select {
-  width: 100%;
-  padding: 0.7rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  margin-bottom: 1rem;
-}
-.plan-modal-actions {
-  display: flex;
-  gap: 0.7rem;
-  justify-content: flex-end;
-}
-.save-plan-btn {
-  background: linear-gradient(135deg, #48bb78, #38a169);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.close-modal-btn {
-  background: #e2e8f0;
-  color: #2d3748;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-}
+.cards { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.25rem; }
+.card { background:#fff; border-radius:12px; padding:1rem; box-shadow:0 6px 18px rgba(15,23,42,0.06); }
+.card-title { font-size:0.9rem; color:#718096; }
+.card-value { font-size:1.6rem; font-weight:700; margin-top:0.2rem; }
+.card-sub { font-size:0.85rem; color:#94a3b8; margin-top:0.5rem; }
 
-.support-controls {
-  margin-bottom: 1rem;
-}
-.ticket-search {
-  padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 100%;
-  max-width: 350px;
-}
-.ticket-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  background: #f7fafc;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.ticket-table th, .ticket-table td {
-  padding: 0.7rem 1rem;
-  text-align: left;
-}
-.ticket-table th {
-  background: #e53e3e;
-  color: #fff;
-  font-weight: 600;
-}
-.ticket-table tr:nth-child(even) {
-  background: #e9eaf7;
-}
-.view-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.4rem 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-right: 0.5em;
-}
-.ticket-modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.ticket-modal {
-  background: #fff;
-  border-radius: 16px;
-  padding: 2rem 2.5rem;
-  max-width: 480px;
-  width: 100%;
-  box-shadow: 0 8px 32px rgba(102,126,234,0.12);
-}
-.ticket-message {
-  background: #f7fafc;
-  border-radius: 8px;
-  padding: 1rem;
-  margin: 1rem 0;
-  color: #2d3748;
-}
-.ticket-reply-input {
-  width: 100%;
-  min-height: 60px;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 0.7rem 1rem;
-  font-size: 1rem;
-  margin-bottom: 0.7rem;
-}
-.ticket-modal-actions {
-  display: flex;
-  gap: 0.7rem;
-  justify-content: flex-end;
-}
-.send-reply-btn {
-  background: linear-gradient(135deg, #48bb78, #38a169);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.close-modal-btn {
-  background: #e2e8f0;
-  color: #2d3748;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-}
+.charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.25rem; }
+.chart-card { background:#fff; border-radius:12px; padding:1rem; height:320px; position:relative; box-shadow:0 6px 18px rgba(15,23,42,0.06); }
+.chart-card h3 { margin:0 0 0.5rem 0; font-size:1rem; }
+.chart-fallback { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.95rem; }
 
-.export-controls {
-  margin-bottom: 1.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-}
-.export-btn {
-  background: linear-gradient(135deg, #764ba2, #667eea);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.export-btn:hover {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-}
+.lower-grid { display:grid; grid-template-columns:2fr 1fr; gap:1rem; }
+.activities-card, .quick-actions-card { background:#fff; border-radius:12px; padding:1rem; box-shadow:0 6px 18px rgba(15,23,42,0.06); }
+.log-table { width:100%; border-collapse:collapse; }
+.log-table th, .log-table td { padding:0.6rem; border-bottom:1px solid #edf2f7; text-align:left; font-size:0.9rem; }
+.log-table th { background:#f7fafc; font-weight:600; color:#475569; }
+.empty { text-align:center; padding:1rem; color:#94a3b8; }
 
-.global-settings-controls {
-  margin-bottom: 1rem;
-  display: flex;
-  gap: 0.5rem;
-}
-.category-input {
-  padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-}
-.add-category-btn {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.category-list {
-  margin-bottom: 1.5rem;
-}
-.category-chip {
-  display: inline-block;
-  background: #e9eaf7;
-  color: #764ba2;
-  border-radius: 16px;
-  padding: 0.4em 1em 0.4em 0.9em;
-  margin: 0 0.5em 0.5em 0;
-  font-size: 0.98em;
-  position: relative;
-}
-.remove-category-btn {
-  background: none;
-  border: none;
-  color: #c53030;
-  font-size: 1.1em;
-  margin-left: 0.5em;
-  cursor: pointer;
-}
-.feature-toggles {
-  margin-bottom: 1.5rem;
-}
-.feature-toggle-row {
-  margin-bottom: 0.7rem;
-}
-.announcement-section {
-  margin-bottom: 1.5rem;
-}
-.announcement-input {
-  width: 100%;
-  min-height: 60px;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 0.7rem 1rem;
-  font-size: 1rem;
-  margin-bottom: 0.7rem;
-}
-.save-announcement-btn {
-  background: linear-gradient(135deg, #48bb78, #38a169);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-}
+.btn-refresh { background:#fff; border:1px solid #e6e6f0; padding:0.5rem; border-radius:8px; cursor:pointer; }
+.action-btn { display:block; width:100%; margin-bottom:0.5rem; padding:0.6rem; background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border:none; border-radius:8px; cursor:pointer; }
 
-.audit-log-controls {
-  margin-bottom: 1rem;
-}
-.log-search {
-  padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 100%;
-  max-width: 350px;
-}
-.log-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  background: #f7fafc;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.log-table th, .log-table td {
-  padding: 0.7rem 1rem;
-  text-align: left;
-}
-.log-table th {
-  background: #48bb78;
-  color: #fff;
-  font-weight: 600;
-}
-.log-table tr:nth-child(even) {
-  background: #e9eaf7;
-}
-
-.user-management-controls {
-  margin-bottom: 1rem;
-}
-.user-search {
-  padding: 0.5rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 100%;
-  max-width: 350px;
-}
-.user-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-  background: #f7fafc;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.user-table th, .user-table td {
-  padding: 0.7rem 1rem;
-  text-align: left;
-}
-.user-table th {
-  background: #764ba2;
-  color: #fff;
-  font-weight: 600;
-}
-.user-table tr:nth-child(even) {
-  background: #e9eaf7;
-}
-</style>
-
-<style>
-.super-user-dashboard {
-  padding: 20px;
-  background-color: #f0f0f0;
-}
+.loading, .error { padding:1rem; text-align:center; color:#94a3b8; background:#fff; border-radius:8px; }
 </style>

@@ -36,8 +36,8 @@
                 type="email"
                 v-model="loginForm.email"
                 class="form-input"
-                :class="{ error: errors.email, filled: loginForm.email }"
-                placeholder=" "
+                :class="{ error: errors.email, filled: loginForm.email, active: loginForm.email }"
+                placeholder=""
                 required
               />
               <label for="email" class="floating-label">Email Address</label>
@@ -59,8 +59,8 @@
                 :type="showPassword ? 'text' : 'password'"
                 v-model="loginForm.password"
                 class="form-input"
-                :class="{ error: errors.password, filled: loginForm.password }"
-                placeholder=" "
+                :class="{ error: errors.password, filled: loginForm.password, active: loginForm.password }"
+                placeholder=""
                 required
               />
               <label for="password" class="floating-label">Password</label>
@@ -163,7 +163,10 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { authAPI, handleAPIError } from '../services/api.js'
+import { authAPI, handleAPIError } from '../../services/api.js'
+import axios from 'axios'
+
+
 
 const router = useRouter()
 
@@ -186,7 +189,8 @@ const errors = reactive({
 const alert = reactive({
   show: false,
   type: 'info',
-  message: ''
+  message: '',
+  details: ''
 })
 
 // Methods
@@ -196,11 +200,14 @@ const clearErrors = () => {
   errors.general = ''
 }
 
-const showAlert = (type, message, duration = 3000) => {
+const showAlert = (type, message, details = '') => {
   alert.show = true
   alert.type = type
   alert.message = message
+  alert.details = details
   
+  // Auto-hide alerts after 5 seconds for errors, 3 seconds for others
+  const duration = type === 'error' ? 5000 : 3000
   setTimeout(() => {
     alert.show = false
   }, duration)
@@ -302,49 +309,88 @@ const handleLogin = async () => {
   clearErrors()
 
   try {
-    // Make API call to backend for authentication
     const res = await fetch('http://localhost:8000/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: username.value,
-        password: password.value
+        email: loginForm.email,
+        password: loginForm.password
       })
     })
-    const data = await res.json()
+
+    let data = null
+    try {
+      data = await res.json()
+    } catch (parseErr) {
+      console.error('Failed to parse login response as JSON', parseErr)
+      showAlert('error', 'Unexpected server response.', 'Please check your connection and try again.')
+      return
+    }
+
     if (res.ok && data.user) {
-      showAlert('Login successful! Redirecting to dashboard...', 'success')
+      showAlert('success', 'Login successful!', 'Redirecting to your dashboard...')
+      const token = data.token || data.plainTextToken || ''
+      if (token) {
+        localStorage.setItem('authToken', token)
+        // set axios header for immediate use
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      } else {
+        // fallback if API didn't return token
+        localStorage.setItem('authToken', 'local-fallback-token')
+      }
+
       localStorage.setItem('isLoggedIn', 'true')
       localStorage.setItem('userData', JSON.stringify(data.user))
-      if (rememberMe.value) {
+
+      if (loginForm.rememberMe) {
         localStorage.setItem('rememberMe', 'true')
-        localStorage.setItem('rememberedUser', username.value)
+        localStorage.setItem('rememberedUser', loginForm.email)
       } else {
         localStorage.removeItem('rememberMe')
         localStorage.removeItem('rememberedUser')
       }
 
-      // Redirect based on role (backend may return `role` string or user.role.name)
-      const role = data.role || (data.user && data.user.role && data.user.role.name)
-      setTimeout(() => {
-        if (role === 'superuser') {
-          router.push('/super-user') // <- normalized route
-        } else {
-          router.push('/')
-        }
-      }, 1500)
+      const role = data.role || (data.user?.role?.name || '')
+      const redirectPath = getRoleBasedRedirect(role)
       
+      setTimeout(() => {
+        router.replace(redirectPath)
+        console.log('Redirected to', redirectPath, 'for role', role)
+      }, 1500)
     } else {
-      if (authResult.status === 403) {
-        showAlert('warning', authResult.message, 5000)
+      // Handle specific error scenarios
+      if (res.status === 401) {
+        if (data.error === 'User not found.') {
+          showAlert(
+            'error',
+            'User not found.',
+            `No account exists for "${loginForm.email}". Please check the email or try demo credentials below.`
+          )
+        } else if (data.error === 'Password is incorrect.') {
+          showAlert('error', 'Invalid password.', 'The password you entered is incorrect. Please try again.')
+        } else {
+          showAlert('error', 'Login failed.', data.error || 'Invalid credentials.')
+        }
+      } else if (res.status === 403) {
+        showAlert(
+          'warning',
+          'Account not verified.',
+          'Your account is pending verification. Please contact the administrator.'
+        )
+      } else if (res.status === 422) {
+        showAlert('error', 'Validation error.', 'Please fill in all required fields.')
       } else {
-        showAlert('error', authResult.message)
+        showAlert('error', 'Login failed.', data.error || data.message || 'An error occurred.')
       }
+      console.warn('Login failed:', data)
     }
-    
   } catch (error) {
     console.error('Login error:', error)
-    showAlert('error', 'An unexpected error occurred. Please try again.')
+    showAlert(
+      'error',
+      'Connection error.',
+      'Unable to reach the server. Please check your internet connection and try again.'
+    )
   } finally {
     isLoading.value = false
   }
@@ -648,8 +694,13 @@ onMounted(() => {
   z-index: 2;
 }
 
+.form-input::placeholder {
+  color: transparent;
+}
+
 .form-input:focus,
-.form-input.filled {
+.form-input.filled,
+.form-input.active {
   border-color: #667eea;
   background: rgba(255, 255, 255, 0.95);
   transform: translateY(-2px);
@@ -657,7 +708,8 @@ onMounted(() => {
 }
 
 .form-input:focus + .floating-label,
-.form-input.filled + .floating-label {
+.form-input.filled + .floating-label,
+.form-input.active + .floating-label {
   transform: translateY(-12px) scale(0.75);
   color: #667eea;
   font-weight: 600;
@@ -680,6 +732,11 @@ onMounted(() => {
   z-index: 3;
   background: rgba(255, 255, 255, 0.9);
   padding: 0 8px;
+  max-width: calc(100% - 96px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform-origin: left center;
 }
 
 .input-line {
@@ -1046,5 +1103,121 @@ onMounted(() => {
   transition: all 0.3s ease;
 }
 
-</Style>
+/* Enhanced Alert Styles */
+.login-alert {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 320px;
+  max-width: calc(100% - 40px);
+  padding: 16px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  animation: alertSlide 0.3s ease-out;
+}
+
+@keyframes alertSlide {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.login-alert.success {
+  background: #d1fae5;
+  border: 1px solid #10b981;
+  color: #065f46;
+}
+
+.login-alert.error {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
+}
+
+.login-alert.warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #78350f;
+}
+
+.login-alert.info {
+  background: #dbeafe;
+  border: 1px solid #3b82f6;
+  color: #1e40af;
+}
+
+.alert-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.alert-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.alert-message-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-message {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.alert-details {
+  font-size: 13px;
+  font-weight: 400;
+  opacity: 0.9;
+  line-height: 1.4;
+}
+
+.alert-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.alert-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.alert-slide-enter-active,
+.alert-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.alert-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
+}
+
+.alert-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
+}
+</style>
 

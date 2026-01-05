@@ -7,5 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class BusinessCategory extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'user_id'];
+
+    protected $table = 'business_categories';
+
+    protected $fillable = ['name', 'description', 'icon'];
 }

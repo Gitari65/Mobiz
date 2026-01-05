@@ -1,34 +1,50 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardPage from '../pages/DashboardPage.vue'
-import InventoryPage from '../pages/InventoryPage.vue'
-import ProductsPage from '../pages/ProductsPage.vue'
-import SalesPage from '../pages/SalesPage.vue'
-import ReportsPage from '../pages/ReportPage.vue'
-import ExpensePage from '../pages/ExpensePage.vue'
+//import users pages(cashier)
+import DashboardPage from '../pages/Users/DashboardPage.vue'
+import InventoryPage from '../pages/Users/InventoryPage.vue'
+import ProductsPage from '../pages/Users/ProductsPage.vue'
+import SalesPage from '../pages/Users/SalesPage.vue'
+import ReportsPage from '../pages/Users/ReportPage.vue'
+import ExpensePage from '../pages/Users/ExpensePage.vue'
+
+//import superuser pages
+import SuperUserDashboard from '../pages/superuser/SuperUserDashboard.vue'
+import SystemLogsPage from '../pages/superuser/SystemLogsPage.vue'
+import UserManagementPage from '../pages/superuser/UserManagementPage.vue'
+import GlobalSettingsPage from '../pages/superuser/GlobalSettingsPage.vue'
+import SettingsPage from '../pages/superuser/SettingsPage.vue'
+import SubscriptionManagementPage from '../pages/superuser/SubscriptionsPage.vue'
+import DataExportPage from '../pages/superuser/DataExportPage.vue'
+import AuditLogsPage from '../pages/superuser/AuditLogsPage.vue'
+import ImpersonatePage from '../pages/superuser/ImpersonatePage.vue'
+import SupportPage from '../pages/superuser/SupportPage.vue' // <-- added
 
 import LoginPage from '../pages/Auth/LoginPage.vue'
 import SignupPage from '../pages/Auth/SignupPage.vue'
 
+import AdminCustomizationPage from '../pages/admin/AdminCustomizationPage.vue'
+import WarehousesPage from '../pages/admin/WarehousesPage.vue'
+import BusinessCategoriesPage from '../pages/admin/BusinessCategoriesPage.vue'
+import ManageUsersPage from '../pages/admin/ManageUsersPage.vue'
+import AdminSettingsPage from '../pages/admin/AdminSettingsPage.vue'
+
 import UnauthorizedPage from '../components/UnauthorizedPage.vue'
 import NotFoundPage from '../components/NotFoundPage.vue'
 
-// Add these imports for  superuser pages
-import UserManagementPage from '../pages/superuser/UserManagementPage.vue'
-import SystemLogsPage from '../pages/superuser/SystemLogsPage.vue'
-import SettingsPage from '../pages/superuser/SettingsPage.vue'
-import SuperUserDashboard from '../pages/superuser/SuperUserDashboard.vue'
+
 
 // Helper function to get user authentication and role info
 const getUserInfo = () => {
   try {
-    const authToken = localStorage.getItem('authToken')
-    const isLoggedIn = localStorage.getItem('isLoggedIn')
-    const userData = JSON.parse(localStorage.getItem('userData') || '{}')
-    
-    const isAuth = !!(authToken && isLoggedIn === 'true')
-    const role = (userData?.role?.name || '').toLowerCase()
-    
+    const authToken = localStorage.getItem('authToken');
+    const isLoggedIn = localStorage.getItem('isLoggedIn');
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+
+    // Treat explicit isLoggedIn flag as authoritative (fixes redirect loop when token is empty)
+    const isAuth = (isLoggedIn === 'true') || (!!authToken && authToken.length > 0);
+    const role = (userData?.role?.name || '').toLowerCase();
+
     return {
       isAuth,
       role,
@@ -63,15 +79,6 @@ const hasRole = (userRole, requiredRole) => {
 }
 
 const routes = [
-  {
-    path: '/superuser',
-    name: 'SuperUserDashboard',
-    component: SuperUserDashboard,
-    meta: {
-      requiresAuth: true,
-      requiresSuperUser: true
-    }
-  },
   { 
     path: '/login', 
     name: 'Login', 
@@ -92,6 +99,7 @@ const routes = [
       title: 'Sign Up - Mobiz POS'
     }
   },
+ 
 
   // Dashboard - Available to all authenticated users
   {
@@ -100,7 +108,8 @@ const routes = [
     component: DashboardPage,
     meta: {
       requiresAuth: true,
-      title: 'Dashboard - Mobiz POS'
+      title: 'Dashboard - Mobiz POS',
+      requiresRole: ROLES.CASHIER
     }
   },
 
@@ -217,6 +226,145 @@ const routes = [
       title: 'Settings - Mobiz POS'
     }
   },
+  {
+    path: '/global-settings',
+    name: 'GlobalSettings',
+    component: GlobalSettingsPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Global Settings - Mobiz POS'
+    }
+  },
+  {
+    path: '/subscriptions',
+    name: 'SubscriptionManagement',
+    component: SubscriptionManagementPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Subscription Management - Mobiz POS'
+    }
+  },
+  {
+    path: '/data-export',
+    name: 'DataExport',
+    component: DataExportPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Data Export - Mobiz POS'
+    }
+  },
+  {
+    path: '/audit-logs',
+    name: 'AuditLogs',
+    component: AuditLogsPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Audit Logs - Mobiz POS'
+    }
+  },
+  {
+    path: '/support',
+    name: 'Support',
+    component: SupportPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Support & Communication - Mobiz POS'
+    }
+  },
+  {
+    path: '/impersonate',
+    name: 'Impersonate',
+    component: ImpersonatePage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Impersonate User - Mobiz POS'
+    }
+  },
+  // --- Compatibility redirects for old /superuser/* links used in some components ---
+  {
+    path: '/superuser',
+    redirect: '/super-user'
+  },
+  {
+    path: '/superuser/users',
+    redirect: '/user-management'
+  },
+  {
+    path: '/superuser/user-management', // <-- added missing alias used by the sidebar
+    redirect: '/user-management'
+  },
+  {
+    path: '/superuser/audit-logs',
+    redirect: '/audit-logs'
+  },
+  {
+    path: '/superuser/global-settings',
+    redirect: '/global-settings'
+  },
+  {
+    path: '/superuser/data-export',
+    redirect: '/data-export'
+  },
+  {
+    path: '/superuser/support',
+    redirect: '/support' // <-- now points to the new /support route
+  },
+  {
+    path: '/superuser/subscriptions',
+    redirect: '/subscriptions'
+  },
+  {
+    path: '/superuser/impersonate',
+    redirect: '/impersonate'
+  },
+
+  // Admin-only pages (also accessible to superuser)
+  {
+    path: '/warehouses',
+    name: 'Warehouses',
+    component: WarehousesPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Warehouses - Mobiz POS'
+    }
+  },
+  {
+    path: '/business-categories',
+    name: 'BusinessCategories',
+    component: BusinessCategoriesPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Business Categories - Mobiz POS'
+    }
+  },
+  {
+    path: '/users',
+    name: 'ManageUsers',
+    component: ManageUsersPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Manage Users - Mobiz POS'
+    }
+  },
+  {
+    path: '/settings',
+    name: 'AdminSettings',
+    component: AdminSettingsPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Settings - Mobiz POS'
+    }
+  },
 
   // Unauthorized access page
   {
@@ -228,6 +376,7 @@ const routes = [
       title: 'Unauthorized Access - Mobiz POS'
     }
   },
+  
 
   // 404 Not Found page
   {
@@ -243,11 +392,13 @@ const routes = [
   {
     path: '/:pathMatch(.*)*',
     redirect: (to) => {
-      const { isAuth } = getUserInfo()
+      const { isAuth, role } = getUserInfo()
       
-      // If user is authenticated but route doesn't exist, go to 404
+      // If user is authenticated, redirect to their role landing page instead of automatically showing 404
       if (isAuth) {
-        return '/not-found'
+        // role is normalized to lower-case in getUserInfo()
+        if (role === 'superuser') return '/super-user'
+        return '/' // default authenticated landing
       }
       
       // If not authenticated, go to login
@@ -283,7 +434,8 @@ router.beforeEach((to, from, next) => {
   // Handle guest-only routes (login, signup)
   if (to.meta.requiresGuest && isAuth) {
     console.log('Redirecting authenticated user from guest route to dashboard')
-    return next('/')
+    const redirectPath = role === 'superuser' ? '/super-user' : '/'
+    return next(redirectPath)
   }
 
   // Handle authentication requirement

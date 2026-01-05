@@ -7,16 +7,29 @@ use Illuminate\Database\Eloquent\Model;
 class Subscription extends Model
 {
     protected $fillable = [
-        'business_id', 'plan', 'status', 'renewal_date', 'features'
+        'company_id', 'plan_id', 'status', 'starts_at', 'ends_at', 'trial_ends_at', 'on_trial', 'monthly_fee'
     ];
     public $timestamps = false;
 
     protected $casts = [
-        'features' => 'array',
-        'renewal_date' => 'datetime',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
+        'trial_ends_at' => 'datetime',
+        'on_trial' => 'boolean'
     ];
 
-    public function business() {
-        return $this->belongsTo(Company::class, 'business_id');
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function plan()
+    {
+        return $this->belongsTo(Plan::class);
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
     }
 }

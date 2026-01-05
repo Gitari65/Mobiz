@@ -1,6 +1,6 @@
 <template>
   <div class="sidebar">
-    <!-- Alert System for Sidebar -->
+    <!-- Alert System -->
     <div v-if="alert.show" class="sidebar-alert" :class="alert.type">
       <div class="alert-content">
         <i :class="getAlertIcon(alert.type)"></i>
@@ -22,358 +22,216 @@
 
     <!-- Navigation Menu -->
     <nav class="navigation">
-<<<<<<< HEAD
-  <ul class="nav">
-    <!-- Admin/User Menus: Only show if NOT super user -->
-    <template v-if="!isSuperUser">
-      <li class="nav-item">
-        <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
-          <div class="link-content">
-            <i class="fas fa-tachometer-alt nav-icon"></i>
-            <span class="nav-text">Dashboard</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
-          <div class="link-content">
-            <i class="fas fa-cash-register nav-icon"></i>
-            <span class="nav-text">POS Sales</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
-          <div class="link-content">
-            <i class="fas fa-box nav-icon"></i>
-            <span class="nav-text">Products</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
-          <div class="link-content">
-            <i class="fas fa-warehouse nav-icon"></i>
-            <span class="nav-text">Inventory</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
-          <div class="link-content">
-            <i class="fas fa-chart-bar nav-icon"></i>
-            <span class="nav-text">Reports</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
-          <div class="link-content">
-            <i class="fas fa-receipt nav-icon"></i>
-            <span class="nav-text">Expenses</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item" v-if="isAdmin">
-        <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
-          <div class="link-content">
-            <i class="fas fa-cogs nav-icon"></i>
-            <span class="nav-text">Admin Customization</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-    </template>
-    <!-- Super User Menus: Only show if super user -->
-    <template v-if="isSuperUser">
-      <li class="nav-item nav-section-title">
-        <span>Super User</span>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser-dashboard')">
-          <div class="link-content">
-            <i class="fas fa-user-shield nav-icon"></i>
-            <span class="nav-text">Dashboard</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/users" class="nav-link" @click="setActiveItem('superuser-users')">
-          <div class="link-content">
-            <i class="fas fa-users nav-icon"></i>
-            <span class="nav-text">User Management</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/audit-logs" class="nav-link" @click="setActiveItem('superuser-audit')">
-          <div class="link-content">
-            <i class="fas fa-clipboard-list nav-icon"></i>
-            <span class="nav-text">Audit Logs</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/global-settings" class="nav-link" @click="setActiveItem('superuser-settings')">
-          <div class="link-content">
-            <i class="fas fa-globe nav-icon"></i>
-            <span class="nav-text">Global Settings</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/data-export" class="nav-link" @click="setActiveItem('superuser-export')">
-          <div class="link-content">
-            <i class="fas fa-file-export nav-icon"></i>
-            <span class="nav-text">Data Export</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/support" class="nav-link" @click="setActiveItem('superuser-support')">
-          <div class="link-content">
-            <i class="fas fa-headset nav-icon"></i>
-            <span class="nav-text">Support & Communication</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/subscriptions" class="nav-link" @click="setActiveItem('superuser-subscriptions')">
-          <div class="link-content">
-            <i class="fas fa-credit-card nav-icon"></i>
-            <span class="nav-text">Subscription & Billing</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-      <li class="nav-item">
-        <router-link to="/superuser/impersonate" class="nav-link" @click="setActiveItem('superuser-impersonate')">
-          <div class="link-content">
-            <i class="fas fa-user-secret nav-icon"></i>
-            <span class="nav-text">Impersonate Business Admin</span>
-            <div class="nav-indicator"></div>
-          </div>
-        </router-link>
-      </li>
-    </template>
-  </ul>
-  </nav>
-=======
       <ul class="nav">
-        <!-- Dashboard - Available to all roles -->
-        <li class="nav-item">
-          <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
-            <div class="link-content">
+        <!-- ============= CASHIER MENUS ============= -->
+        <template v-if="isCashier">
+          <li class="nav-item">
+            <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
               <i class="fas fa-tachometer-alt nav-icon"></i>
               <span class="nav-text">Dashboard</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- POS Sales - Available to all except cashier (based on your original logic) -->
-        <li class="nav-item" v-if="canViewPOSSales">
-          <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
-            <div class="link-content">
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
               <i class="fas fa-cash-register nav-icon"></i>
               <span class="nav-text">POS Sales</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Products - Available to admin and superuser -->
-        <li class="nav-item" v-if="canViewProducts">
-          <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
-            <div class="link-content">
+            </router-link>
+          </li>
+        </template>
+
+        <!-- ============= ADMIN MENUS ============= -->
+        <template v-else-if="isAdmin">
+          <li class="nav-item">
+            <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
+              <i class="fas fa-tachometer-alt nav-icon"></i>
+              <span class="nav-text">Dashboard</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
+              <i class="fas fa-cash-register nav-icon"></i>
+              <span class="nav-text">POS Sales</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
               <i class="fas fa-box nav-icon"></i>
               <span class="nav-text">Products</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Inventory - Available to admin and superuser -->
-        <li class="nav-item" v-if="canViewInventory">
-          <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
-            <div class="link-content">
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
               <i class="fas fa-warehouse nav-icon"></i>
               <span class="nav-text">Inventory</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Reports - Available to admin and superuser -->
-        <li class="nav-item" v-if="canViewReports">
-          <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
-            <div class="link-content">
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
               <i class="fas fa-chart-bar nav-icon"></i>
               <span class="nav-text">Reports</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Expenses - Admin only -->
-        <li class="nav-item" v-if="isAdmin">
-          <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
-            <div class="link-content">
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
               <i class="fas fa-receipt nav-icon"></i>
               <span class="nav-text">Expenses</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Admin Customization - Admin only -->
-        <li class="nav-item" v-if="isAdmin">
-          <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
-            <div class="link-content">
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
               <i class="fas fa-cogs nav-icon"></i>
               <span class="nav-text">Admin Customization</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Super User Dashboard - Super User only -->
-        <li class="nav-item" v-if="isSuperUser">
-          <router-link to="/super-user" class="nav-link" @click="setActiveItem('superuser')">
-            <div class="link-content">
-              <i class="fas fa-user-shield nav-icon"></i>
-              <span class="nav-text">Super User Dashboard</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- User Management - Super User only -->
-        <li class="nav-item" v-if="isSuperUser">
-          <router-link to="/user-management" class="nav-link" @click="setActiveItem('user-management')">
-            <div class="link-content">
-              <i class="fas fa-users-cog nav-icon"></i>
-              <span class="nav-text">User Management</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- System Logs - Super User only -->
-        <li class="nav-item" v-if="isSuperUser">
-          <router-link to="/system-logs" class="nav-link" @click="setActiveItem('system-logs')">
-            <div class="link-content">
-              <i class="fas fa-file-alt nav-icon"></i>
-              <span class="nav-text">System Logs</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
-        
-        <!-- Settings - Super User only -->
-        <li class="nav-item" v-if="isSuperUser">
-          <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
-            <div class="link-content">
-              <i class="fas fa-sliders-h nav-icon"></i>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/warehouses" class="nav-link" @click="setActiveItem('warehouses')">
+              <i class="fas fa-building nav-icon"></i>
+              <span class="nav-text">Warehouses</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/business-categories" class="nav-link" @click="setActiveItem('business-categories')">
+              <i class="fas fa-tags nav-icon"></i>
+              <span class="nav-text">Business Categories</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/users" class="nav-link" @click="setActiveItem('users')">
+              <i class="fas fa-users nav-icon"></i>
+              <span class="nav-text">Manage Users</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
+              <i class="fas fa-cog nav-icon"></i>
               <span class="nav-text">Settings</span>
-              <div class="nav-indicator"></div>
-            </div>
-          </router-link>
-        </li>
+            </router-link>
+          </li>
+        </template>
+
+        <!-- ============= SUPER USER MENUS ============= -->
+        <template v-else-if="isSuperUser">
+          <li class="nav-item nav-section-title">
+            <span>Super User</span>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser-dashboard')">
+              <i class="fas fa-user-shield nav-icon"></i>
+              <span class="nav-text">Dashboard</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/user-management" class="nav-link" @click="setActiveItem('superuser-users')">
+              <i class="fas fa-users nav-icon"></i>
+              <span class="nav-text">User Management</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/audit-logs" class="nav-link" @click="setActiveItem('superuser-audit')">
+              <i class="fas fa-clipboard-list nav-icon"></i>
+              <span class="nav-text">Audit Logs</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/global-settings" class="nav-link" @click="setActiveItem('superuser-settings')">
+              <i class="fas fa-globe nav-icon"></i>
+              <span class="nav-text">Global Settings</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/data-export" class="nav-link" @click="setActiveItem('superuser-export')">
+              <i class="fas fa-file-export nav-icon"></i>
+              <span class="nav-text">Data Export</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/support" class="nav-link" @click="setActiveItem('superuser-support')">
+              <i class="fas fa-headset nav-icon"></i>
+              <span class="nav-text">Support & Communication</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/subscriptions" class="nav-link" @click="setActiveItem('superuser-subscriptions')">
+              <i class="fas fa-credit-card nav-icon"></i>
+              <span class="nav-text">Subscription & Billing</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/impersonate" class="nav-link" @click="setActiveItem('superuser-impersonate')">
+              <i class="fas fa-user-secret nav-icon"></i>
+              <span class="nav-text">Impersonate Business Admin</span>
+            </router-link>
+          </li>
+        </template>
       </ul>
     </nav>
->>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
+
+    <!-- Chat Modal -->
+    <ChatListModal
+      :isOpen="showChatModal"
+      @close="closeChatModal"
+      @message-sent="onChatMessageSent"
+    />
 
     <!-- Loading Spinner -->
     <div v-if="isLoading" class="sidebar-spinner">
       <div class="spinner"></div>
       <p class="loading-text">Loading...</p>
     </div>
-    <!-- Footer Section -->
+
+    <!-- Footer -->
     <div class="sidebar-footer">
       <div class="user-section">
-        <div class="user-avatar">
-          <i class="fas fa-user"></i>
-        </div>
+        <div class="user-avatar"><i class="fas fa-user"></i></div>
         <div class="user-info">
-<<<<<<< HEAD
           <p class="user-name">{{ userName }}</p>
           <p class="user-role">{{ userRoleLabel }}</p>
-=======
-          <p class="user-name">{{ userData?.name || 'Unknown User' }}</p>
-          <p class="user-role">{{ formatRoleName(userData?.role?.name) }}</p>
->>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
         </div>
       </div>
-      <button class="logout-btn" @click="handleLogout">
-        <i class="fas fa-sign-out-alt"></i>
-        <span>Logout</span>
-      </button>
+
+      <!-- Chat & Logout Buttons Row -->
+      <div class="footer-actions">
+        <button v-if="isSuperUser" class="chat-btn" @click="openChatModal" :title="`${unreadCount} unread messages`">
+          <i class="fas fa-comments"></i>
+          <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+        </button>
+        <button class="logout-btn" @click="handleLogout">
+          <i class="fas fa-sign-out-alt"></i><span>Logout</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-<<<<<<< HEAD
-import { ref, reactive, onMounted, computed } from 'vue'
-=======
-import { ref, reactive, computed, onMounted } from 'vue'
->>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
+import ChatListModal from './ChatListModal.vue'
 
 const router = useRouter()
 
-// Reactive state
+// --- STATE ---
 const isLoading = ref(false)
-const activeItem = ref('dashboard')
-const userData = ref(null)
-
-// Role flags
 const isAdmin = ref(false)
 const isSuperUser = ref(false)
-<<<<<<< HEAD
+const isCashier = ref(false)
 const userName = ref('')
 const userRole = ref('')
-const userRoleLabel = computed(() => {
-  if (userRole.value === 'superuser') return 'Super User'
-  if (userRole.value === 'admin') return 'Administrator'
-  if (userRole.value === 'user') return 'User'
-  return userRole.value ? userRole.value.charAt(0).toUpperCase() + userRole.value.slice(1) : ''
-=======
-const isCashier = ref(false)
+const activeItem = ref('dashboard')
+const unreadCount = ref(0)
+const showChatModal = ref(false)
+const chatRefreshInterval = ref(null)
 
-// Computed properties for menu visibility
-const canViewPOSSales = computed(() => {
-  // Based on your original logic: all except cashier
-  return !isCashier.value
-})
-
-const canViewProducts = computed(() => {
-  return isAdmin.value || isSuperUser.value
-})
-
-const canViewInventory = computed(() => {
-  return isAdmin.value || isSuperUser.value
-})
-
-const canViewReports = computed(() => {
-  return isAdmin.value || isSuperUser.value
->>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
-})
-
-// Alert system
+// --- ALERT SYSTEM ---
 const alert = reactive({
   show: false,
   type: 'info',
@@ -381,45 +239,23 @@ const alert = reactive({
   timeout: null
 })
 
-// Methods
-const setActiveItem = (item) => {
-  activeItem.value = item
-}
+// --- COMPUTED ---
+const userRoleLabel = computed(() => {
+  if (userRole.value === 'superuser') return 'Super User'
+  if (userRole.value === 'admin') return 'Administrator'
+  if (userRole.value === 'user') return 'User'
+  return userRole.value ? userRole.value.charAt(0).toUpperCase() + userRole.value.slice(1) : ''
+})
 
-const formatRoleName = (roleName) => {
-  if (!roleName) return 'Unknown Role'
-  
-  // Capitalize first letter and handle special cases
-  const formatted = roleName.charAt(0).toUpperCase() + roleName.slice(1).toLowerCase()
-  
-  if (formatted === 'Superuser') return 'Super User'
-  return formatted
-}
-
+// --- METHODS ---
 const showAlert = (type, message, duration = 3000) => {
   alert.show = true
   alert.type = type
   alert.message = message
-  
-  if (alert.timeout) {
-    clearTimeout(alert.timeout)
-  }
-  
-  alert.timeout = setTimeout(() => {
-    dismissAlert()
-  }, duration)
+  if (alert.timeout) clearTimeout(alert.timeout)
+  alert.timeout = setTimeout(() => (alert.show = false), duration)
 }
-
-const dismissAlert = () => {
-  alert.show = false
-  alert.type = 'info'
-  alert.message = ''
-  
-  if (alert.timeout) {
-    clearTimeout(alert.timeout)
-    alert.timeout = null
-  }
-}
+const dismissAlert = () => (alert.show = false)
 
 const getAlertIcon = (type) => {
   const icons = {
@@ -431,165 +267,94 @@ const getAlertIcon = (type) => {
   return icons[type] || icons.info
 }
 
-const setLoading = (loading) => {
-  isLoading.value = loading
-}
+const setActiveItem = (item) => (activeItem.value = item)
+
+const setLoading = (loading) => (isLoading.value = loading)
 
 const initializeUserRole = () => {
   try {
-    const storedUserData = JSON.parse(localStorage.getItem('userData'))
-    
-    if (storedUserData?.role?.name) {
-      userData.value = storedUserData
-      const roleName = storedUserData.role.name.toLowerCase()
-      
-      // Reset all role flags
-      isAdmin.value = false
-      isSuperUser.value = false
-      isCashier.value = false
-      
-      // Set appropriate role flag
-      switch (roleName) {
-        case 'admin':
-        case 'administrator':
-          isAdmin.value = true
-          break
-        case 'superuser':
-        case 'super user':
-        case 'super_user':
-          isSuperUser.value = true
-          break
-        case 'cashier':
-          isCashier.value = true
-          break
-        default:
-          console.warn(`Unknown role: ${roleName}`)
-          // Default to most restrictive role
-          isCashier.value = true
-      }
-      
-      // Debug logging
-      console.log('User Role:', roleName)
-      console.log('Role Flags:', {
-        isAdmin: isAdmin.value,
-        isSuperUser: isSuperUser.value,
-        isCashier: isCashier.value
-      })
-      
-      return true
-    }
-  } catch (error) {
-    console.error('Error parsing user data:', error)
+    const storedUser = JSON.parse(localStorage.getItem('userData'))
+    if (!storedUser || !storedUser.role?.name) throw new Error('Invalid user data')
+
+    const roleName = storedUser.role.name.toLowerCase()
+    userRole.value = roleName
+    userName.value = storedUser.name || ''
+
+    isAdmin.value = ['admin', 'administrator'].includes(roleName)
+    isSuperUser.value = ['superuser', 'super_user', 'super user'].includes(roleName)
+    isCashier.value = roleName === 'cashier'
+  } catch (err) {
+    console.warn('User role init failed', err)
+    isAdmin.value = false
+    isSuperUser.value = false
+    isCashier.value = true
   }
-  
-  // If no valid user data, default to cashier (most restrictive)
-  userData.value = null
-  isAdmin.value = false
-  isSuperUser.value = false
-  isCashier.value = true
-  return false
 }
 
 const handleLogout = async () => {
   try {
     setLoading(true)
     showAlert('info', 'Logging out...', 1000)
-    
-    // Simulate logout process
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // Clear stored auth data
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('userData')
-    localStorage.removeItem('rememberMe')
-    
-    // Reset user state
-    userData.value = null
-    isAdmin.value = false
-    isSuperUser.value = false
-    isCashier.value = false
-    
+    localStorage.clear()
     showAlert('success', 'Logged out successfully!', 1500)
-    
-    setTimeout(() => {
-      router.push('/login')
-    }, 1500)
-  } catch (error) {
-    console.error('Logout error:', error)
-    showAlert('error', 'Error during logout')
+    setTimeout(() => router.push('/login'), 1500)
   } finally {
     setLoading(false)
   }
 }
 
-// Lifecycle
-onMounted(() => {
-  // Initialize user role
-  const hasValidUser = initializeUserRole()
-  
-  if (!hasValidUser) {
-    console.warn('No valid user data found, redirecting to login')
-    showAlert('warning', 'Please log in to continue')
-    setTimeout(() => router.push('/login'), 2000)
-    return
-  }
-  
-  // Set active item based on current route
-  const currentPath = router.currentRoute.value.path
-<<<<<<< HEAD
-  if (currentPath === '/') {
-    activeItem.value = 'dashboard'
-  } else if (currentPath.includes('/sales')) {
-    activeItem.value = 'sales'
-  } else if (currentPath.includes('/products')) {
-    activeItem.value = 'products'
-  } else if (currentPath.includes('/inventory')) {
-    activeItem.value = 'inventory'
-  } else if (currentPath.includes('/reports')) {
-    activeItem.value = 'reports'
-  }
-  // Check if user is admin or super user
+const loadUnreadCount = async () => {
   try {
-    const userData = JSON.parse(localStorage.getItem('userData'))
-    isAdmin.value = userData && userData.role && userData.role.name === 'admin'
-    isSuperUser.value = userData && userData.role && userData.role.name === 'superuser'
-    userName.value = userData && userData.name ? userData.name : ''
-    userRole.value = userData && userData.role && userData.role.name ? userData.role.name : ''
+    // don't call protected endpoint if no token present
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      console.warn('Skipping unread count load: no auth token')
+      unreadCount.value = 0
+      return
+    }
+
+    // axios interceptor should already set Authorization header from token
+    const res = await axios.get('/api/super/chats/unread-count')
+    unreadCount.value = res.data.unread_count || 0
   } catch (e) {
-    isAdmin.value = false
-    isSuperUser.value = false
-    userName.value = ''
-    userRole.value = ''
-=======
-  const routeMapping = {
-    '/': 'dashboard',
-    '/sales': 'sales',
-    '/products': 'products',
-    '/inventory': 'inventory',
-    '/reports': 'reports',
-    '/expenses': 'expenses',
-    '/admin-customization': 'admin-customization',
-    '/super-user': 'superuser',
-    '/user-management': 'user-management',
-    '/system-logs': 'system-logs',
-    '/settings': 'settings'
->>>>>>> 043a6e558bfdf2ca92eea8c4fad7afb1ddee17fa
+    console.warn('Failed to load unread count', e)
   }
-  
-  // Find matching route
-  const matchedRoute = Object.keys(routeMapping).find(route => 
-    currentPath === route || (route !== '/' && currentPath.includes(route))
-  )
-  
-  activeItem.value = matchedRoute ? routeMapping[matchedRoute] : 'dashboard'
+}
+
+const openChatModal = () => {
+  showChatModal.value = true
+  loadUnreadCount()
+}
+
+const closeChatModal = () => {
+  showChatModal.value = false
+}
+
+const onChatMessageSent = () => {
+  loadUnreadCount()
+}
+
+// --- LIFECYCLE ---
+onMounted(() => {
+  initializeUserRole()
+  if (isSuperUser.value) {
+    loadUnreadCount()
+    // Poll unread count every 10 seconds
+    chatRefreshInterval.value = setInterval(loadUnreadCount, 10000)
+  }
+  const path = router.currentRoute.value.path
+  if (path.includes('/sales')) activeItem.value = 'sales'
+  else if (path.includes('/products')) activeItem.value = 'products'
+  else if (path.includes('/inventory')) activeItem.value = 'inventory'
+  else if (path.includes('/reports')) activeItem.value = 'reports'
+  else activeItem.value = 'dashboard'
 })
 
-// Expose methods for parent components
-defineExpose({
-  showAlert,
-  setLoading,
-  dismissAlert,
-  initializeUserRole
+onUnmounted(() => {
+  if (chatRefreshInterval.value) {
+    clearInterval(chatRefreshInterval.value)
+  }
 })
 </script>
 
@@ -800,24 +565,113 @@ defineExpose({
   position: relative;
 }
 
+.nav-section-title {
+  padding: 0.75rem 1.5rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #a0aec0;
+  margin: 0.75rem 0 0.25rem 0;
+  display: block !important;
+}
+
 .nav-link {
   color: #e2e8f0;
   text-decoration: none;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1.25rem;
   position: relative;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0;
+  border-radius: 10px;
   overflow: hidden;
+  margin: 0 0.5rem;
 }
 
-.nav-link:hover {
-  color: white;
-  background: linear-gradient(90deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.05));
+/* Background gradient effect on hover */
+.nav-link::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.1) 100%);
+  transition: left 0.3s ease;
+  z-index: 0;
 }
 
-.nav-link.router-link-exact-active {
-  color: white;
-  background: linear-gradient(90deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.1));
+.nav-link:hover::before {
+  left: 0;
+}
+
+/* Active state gradient background */
+.nav-link.router-link-exact-active::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.25) 0%, rgba(118, 75, 162, 0.15) 100%);
+}
+
+/* Icon styling */
+.nav-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #a0aec0;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.nav-link:hover .nav-icon {
+  color: #667eea;
+  transform: scale(1.15) translateX(2px);
+  filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.4));
+}
+
+.nav-link.router-link-exact-active .nav-icon {
+  color: #667eea;
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 10px rgba(102, 126, 234, 0.5));
+}
+
+/* Text styling */
+.nav-text {
+  font-weight: 500;
+  font-size: 0.95rem;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+.nav-link:hover .nav-text {
+  color: #fff;
+  transform: translateX(4px);
+}
+
+.nav-link.router-link-exact-active .nav-text {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Right accent line for active state */
+.nav-indicator {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+  transform: scaleY(0);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 3px 0 0 3px;
 }
 
 .nav-link.router-link-exact-active .nav-indicator {
@@ -825,108 +679,88 @@ defineExpose({
   opacity: 1;
 }
 
-.link-content {
-  display: flex;
-  align-items: center;
-  padding: 0.875rem 1.5rem;
-  position: relative;
-  transition: transform 0.2s ease;
-}
-
-.nav-link:hover .link-content {
-  transform: translateX(8px);
-}
-
-.nav-icon {
-  width: 20px;
-  font-size: 1.125rem;
-  margin-right: 1rem;
-  transition: all 0.3s ease;
-  color: #a0aec0;
-}
-
-.nav-link:hover .nav-icon,
-.nav-link.router-link-exact-active .nav-icon {
-  color: #667eea;
-  transform: scale(1.1);
-}
-
-.nav-text {
-  font-weight: 500;
-  font-size: 0.95rem;
-  flex: 1;
-}
-
-.nav-indicator {
+/* Left accent for active state */
+.nav-accent {
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: linear-gradient(180deg, #667eea, #764ba2);
-  transform: scaleY(0);
-  opacity: 0;
-  transition: all 0.3s ease;
-  border-radius: 0 2px 2px 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+  border-radius: 0 3px 3px 0;
+  transition: height 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Loading Spinner */
-.sidebar-spinner {
+.nav-link.router-link-exact-active .nav-accent {
+  height: 60%;
+}
+
+/* Ripple effect on click */
+.nav-link::after {
+  content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  z-index: 100;
-  background: rgba(45, 55, 72, 0.95);
-  backdrop-filter: blur(10px);
-  padding: 2rem;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(102, 126, 234, 0.3);
-  border-left: 3px solid #667eea;
+  width: 0;
+  height: 0;
+  background: radial-gradient(circle, rgba(102, 126, 234, 0.3) 0%, transparent 70%);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.nav-link:active::after {
+  animation: ripple 0.6s ease-out;
 }
 
-.loading-text {
-  color: #e2e8f0;
-  font-size: 0.875rem;
-  margin: 0;
-  font-weight: 500;
+@keyframes ripple {
+  0% {
+    width: 0;
+    height: 0;
+    opacity: 1;
+  }
+  100% {
+    width: 300px;
+    height: 300px;
+    opacity: 0;
+  }
 }
 
-/* Footer Section */
+/* Smooth transition for all link states */
+.nav-link {
+  outline: none;
+}
+
+.nav-link:focus-visible {
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+}
+
+/* Footer Section - Organized Layout */
 .sidebar-footer {
-  padding: 1.5rem;
+  padding: 1.25rem;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .user-section {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 1rem;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  transition: background 0.3s ease;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .user-section:hover {
   background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .user-avatar {
@@ -940,6 +774,7 @@ defineExpose({
   color: white;
   font-size: 1rem;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(72, 187, 120, 0.2);
 }
 
 .user-info {
@@ -950,8 +785,8 @@ defineExpose({
 .user-name {
   color: white;
   font-weight: 600;
-  font-size: 0.875rem;
-  margin: 0 0 0.125rem 0;
+  font-size: 0.85rem;
+  margin: 0 0 0.1rem 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -959,98 +794,150 @@ defineExpose({
 
 .user-role {
   color: #a0aec0;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 500;
 }
 
-.logout-btn {
-  width: 100%;
-  background: linear-gradient(135deg, rgba(229, 62, 62, 0.8), rgba(197, 48, 48, 0.8));
+/* Chat Button - Improved */
+.chat-btn {
+  flex: 1;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.85), rgba(118, 75, 162, 0.85));
   color: white;
-  border: none;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  padding: 0.7rem 1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  font-family: inherit;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+  white-space: nowrap;
+}
+
+.chat-btn:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 1), rgba(118, 75, 162, 0.95));
+  border-color: rgba(102, 126, 234, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.25);
+}
+
+.chat-btn:active {
+  transform: translateY(0);
+}
+
+/* Unread Badge - Enhanced */
+.unread-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border: 2px solid #2d3748;
+  animation: badgePulse 2s infinite;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+/* Logout Button - Improved */
+.logout-btn {
+  flex: 1;
+  background: linear-gradient(135deg, rgba(229, 62, 62, 0.85), rgba(197, 48, 48, 0.85));
+  color: white;
+  border: 1px solid rgba(229, 62, 62, 0.3);
+  padding: 0.7rem 1rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
+  box-shadow: 0 4px 12px rgba(229, 62, 62, 0.15);
+  white-space: nowrap;
 }
 
 .logout-btn:hover {
-  background: linear-gradient(135deg, rgba(229, 62, 62, 0.9), rgba(197, 48, 48, 0.9));
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(229, 62, 62, 0.3);
+  background: linear-gradient(135deg, rgba(229, 62, 62, 1), rgba(197, 48, 48, 0.95));
+  border-color: rgba(229, 62, 62, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(229, 62, 62, 0.25);
 }
 
 .logout-btn:active {
   transform: translateY(0);
 }
 
-/* Responsive Design */
-@media (max-width: 1024px) {
-  .sidebar {
-    width: 260px;
-  }
+.logout-btn i {
+  transition: all 0.3s ease;
 }
 
+.logout-btn:hover i {
+  transform: scale(1.1);
+}
+
+/* Responsive Adjustments */
 @media (max-width: 768px) {
-  .sidebar {
-    width: 240px;
+  .sidebar-footer {
+    padding: 1rem;
+    gap: 0.5rem;
   }
-  
-  .brand-section {
-    padding: 1.5rem 1rem;
+
+  .footer-actions {
+    gap: 0.5rem;
   }
-  
-  .logo {
-    font-size: 1.5rem;
+
+  .chat-btn,
+  .logout-btn {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.85rem;
   }
-  
-  .link-content {
-    padding: 0.75rem 1rem;
+
+  .chat-btn span,
+  .logout-btn span {
+    display: none;
   }
-  
-  .nav-icon {
-    margin-right: 0.75rem;
+
+  .user-section {
+    padding: 0.6rem;
   }
-}
 
-/* Dark Mode Enhancements */
-@media (prefers-color-scheme: dark) {
-  .sidebar {
-    background: linear-gradient(180deg, #1a202c 0%, #0d1117 100%);
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
   }
-}
 
-/* Smooth scrollbar for navigation */
-.navigation::-webkit-scrollbar {
-  width: 4px;
-}
+  .user-name {
+    font-size: 0.8rem;
+  }
 
-.navigation::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.navigation::-webkit-scrollbar-thumb {
-  background: rgba(102, 126, 234, 0.5);
-  border-radius: 2px;
-}
-
-.navigation::-webkit-scrollbar-thumb:hover {
-  background: rgba(102, 126, 234, 0.7);
-}
-
-/* Font Smoothing */
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  .user-role {
+    font-size: 0.65rem;
+  }
 }
 </style>
