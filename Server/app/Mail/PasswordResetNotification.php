@@ -11,23 +11,23 @@ class PasswordResetNotification extends Mailable
     use Queueable, SerializesModels;
 
     public $user;
-    public $tempPassword;
+    public $otp;
 
-    public function __construct(User $user, string $tempPassword)
+    public function __construct(User $user, string $otp)
     {
         $this->user = $user;
-        $this->tempPassword = $tempPassword;
+        $this->otp = $otp;
     }
 
     public function build()
     {
-        return $this->subject('Your password has been reset')
+        return $this->subject('Password Reset - New Temporary Password')
                     ->view('emails.password_reset')
                     ->with([
                         'name' => $this->user->name,
                         'email' => $this->user->email,
-                        'tempPassword' => $this->tempPassword,
-                        'mustChange' => $this->user->must_change_password ?? false
+                        'otp' => $this->otp,
+                        'company' => config('app.name', 'MOBIz')
                     ]);
     }
 }

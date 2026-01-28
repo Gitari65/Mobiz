@@ -17,44 +17,70 @@ class PurchaseController extends Controller
             
             // Validate the request
             $request->validate([
+                'supplier_id' => 'nullable|exists:suppliers,id',
                 'supplier_name' => 'nullable|string|max:255',
+                'invoice_number' => 'nullable|string|max:100',
+                'invoice_date' => 'nullable|date',
+                'warehouse_id' => 'nullable|exists:warehouses,id',
+                'tax_amount' => 'nullable|numeric|min:0',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'discount' => 'nullable|numeric|min:0',
                 'notes' => 'nullable|string',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
-                'items.*.cost' => 'required|numeric|min:0'
+                'items.*.cost' => 'required|numeric|min:0',
+                'items.*.notes' => 'nullable|string'
             ]);
 
-            // Calculate total cost
-            $totalCost = collect($request->items)->sum('cost');
+            // Calculate subtotal from items
+            $subtotal = collect($request->items)->sum(function ($item) {
+                return $item['quantity'] * $item['cost'];
+            });
+
+            // Calculate total cost with tax, shipping, and discount
+            $taxAmount = $request->tax_amount ?? 0;
+            $shippingCost = $request->shipping_cost ?? 0;
+            $discount = $request->discount ?? 0;
+            $totalCost = $subtotal + $taxAmount + $shippingCost - $discount;
 
             // Create the purchase record
             $purchase = Purchase::create([
+                'supplier_id' => $request->supplier_id,
                 'supplier_name' => $request->supplier_name,
-                'notes' => $request->notes,
-                'total_cost' => $totalCost
+                'invoice_number' => $request->invoice_number,
+                'invoice_date' => $request->invoice_date,
+                'warehouse_id' => $request->warehouse_id,
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'shipping_cost' => $shippingCost,
+                'discount' => $discount,
+                'total_cost' => $totalCost,
+                'notes' => $request->notes
             ]);
 
             // Create purchase items and update product stock
             foreach ($request->items as $item) {
-                // Calculate unit price from total cost and quantity
-                $unitPrice = $item['cost'] / $item['quantity'];
+                $totalItemCost = $item['quantity'] * $item['cost'];
                 
                 // Create purchase item
                 PurchaseItem::create([
                     'purchase_id' => $purchase->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
-                    'unit_price' => $unitPrice,
-                    'total_price' => $item['cost']
+                    'unit_price' => $item['cost'],
+                    'total_price' => $totalItemCost,
+                    'notes' => $item['notes'] ?? null
                 ]);
 
                 // Update product stock
                 $product = Product::find($item['product_id']);
                 $product->increment('stock_quantity', $item['quantity']);
                 
-                // Update product price if needed (optional)
-                // $product->update(['price' => $unitPrice]);
+                // Optionally update cost_price if provided
+                if (isset($item['cost']) && $item['cost'] > 0) {
+                    $product->update(['cost_price' => $item['cost']]);
+                }
             }
 
             DB::commit();

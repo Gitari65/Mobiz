@@ -1,13 +1,49 @@
 <template>
   <div class="report-wrapper">
     <div class="report-container">
+      <!-- Header -->
       <div class="report-header">
-        <h1 class="page-title">📊 Reports Dashboard</h1>
-        <p class="page-subtitle">Comprehensive business insights and analytics</p>
-        <button @click="refreshAllReports" class="refresh-btn" :disabled="isLoading">
-          <i class="fas fa-sync-alt" :class="{ 'spinning': isLoading }"></i>
-          {{ isLoading ? 'Refreshing...' : 'Refresh Reports' }}
-        </button>
+        <div class="header-top">
+          <div>
+            <h1 class="page-title">📊 Reports Dashboard</h1>
+            <p class="page-subtitle">Comprehensive business insights and analytics</p>
+            <small v-if="lastFetchTime" class="cache-info">
+              <i class="fas fa-clock"></i> Last updated: {{ formatDate(lastFetchTime) }}
+            </small>
+          </div>
+          <button @click="refreshAllReports" class="refresh-btn" :disabled="isLoading">
+            <i class="fas fa-sync-alt" :class="{ 'spinning': isLoading }"></i>
+            {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Date Range Filter -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label><i class="fas fa-calendar"></i> From</label>
+          <input v-model="filters.startDate" type="date" class="date-input" @change="applyFilters" />
+        </div>
+        <div class="filter-group">
+          <label><i class="fas fa-calendar"></i> To</label>
+          <input v-model="filters.endDate" type="date" class="date-input" @change="applyFilters" />
+        </div>
+        <button @click="resetFilters" class="reset-btn"><i class="fas fa-times"></i> Reset</button>
+      </div>
+
+      <!-- Tabs Navigation -->
+      <div class="tabs-container">
+        <div class="tabs-nav">
+          <button 
+            v-for="tab in reportTabs" 
+            :key="tab.id"
+            :class="['tab-btn', { 'tab-active': activeTab === tab.id }]"
+            @click="activeTab = tab.id"
+          >
+            <i :class="tab.icon"></i>
+            {{ tab.name }}
+          </button>
+        </div>
       </div>
 
       <!-- Loading State -->
@@ -16,209 +52,197 @@
         <p>Loading reports...</p>
       </div>
 
-      <!-- Main Content -->
-      <div v-else>
-        <!-- Key Metrics Grid -->
-        <div class="metrics-grid">
-          <div class="metric-card sales-metric">
-            <div class="metric-icon">💰</div>
-            <div class="metric-content">
-              <h3>Monthly Sales</h3>
-              <p class="metric-value">Ksh {{ formatNumber(salesData.total_sales_month) }}</p>
-              <small class="metric-label">Total revenue this month</small>
+      <!-- Tab Content -->
+      <div v-else class="tabs-content">
+        <!-- Sales Tab -->
+        <div v-if="activeTab === 'sales'" class="tab-pane active">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">💰</div>
+              <div class="metric-content">
+                <h3>Total Sales</h3>
+                <p class="metric-value">Ksh {{ formatNumber(reports.sales.total_revenue) }}</p>
+                <small>Total revenue</small>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">🛒</div>
+              <div class="metric-content">
+                <h3>Transactions</h3>
+                <p class="metric-value">{{ reports.sales.total_transactions || 0 }}</p>
+                <small>Sales completed</small>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📈</div>
+              <div class="metric-content">
+                <h3>Avg. Transaction</h3>
+                <p class="metric-value">Ksh {{ formatNumber(reports.sales.avg_transaction) }}</p>
+                <small>Per sale average</small>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📦</div>
+              <div class="metric-content">
+                <h3>Items Sold</h3>
+                <p class="metric-value">{{ reports.sales.total_items || 0 }}</p>
+                <small>Units moved</small>
+              </div>
             </div>
           </div>
-
-          <div class="metric-card transactions-metric">
-            <div class="metric-icon">🛒</div>
-            <div class="metric-content">
-              <h3>Transactions</h3>
-              <p class="metric-value">{{ salesData.total_transactions_month || 0 }}</p>
-              <small class="metric-label">Sales completed</small>
-            </div>
-          </div>
-
-          <div class="metric-card average-metric">
-            <div class="metric-icon">📈</div>
-            <div class="metric-content">
-              <h3>Avg. Transaction</h3>
-              <p class="metric-value">Ksh {{ formatNumber(salesData.average_transaction_value) }}</p>
-              <small class="metric-label">Per sale average</small>
-            </div>
-          </div>
-
-          <div class="metric-card items-metric">
-            <div class="metric-icon">📦</div>
-            <div class="metric-content">
-              <h3>Items Sold</h3>
-              <p class="metric-value">{{ salesData.total_items_sold_month || 0 }}</p>
-              <small class="metric-label">Units moved</small>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-receipt"></i> Sales Transactions</h2></div>
+            <div class="table-wrapper">
+              <div v-if="!reports.sales.transactions?.length" class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <p>No sales found for the selected period</p>
+              </div>
+              <table v-else class="modern-table">
+                <thead>
+                  <tr><th>Sale ID</th><th>Amount</th><th>Items</th><th>Customer</th><th>Date & Time</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="sale in reports.sales.transactions" :key="sale.id">
+                    <td class="sale-id">#{{ sale.id }}</td>
+                    <td class="amount">Ksh {{ formatNumber(sale.total) }}</td>
+                    <td>{{ sale.items_count || 0 }} items</td>
+                    <td>{{ sale.customer_name || 'Walk-in' }}</td>
+                    <td>{{ formatDate(sale.created_at) }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
 
-        <!-- Reports Grid -->
-        <div class="reports-grid">
-          <!-- Inventory Summary -->
-          <div class="report-card inventory-card">
-            <div class="card-header">
-              <h2 class="card-title">
-                <i class="fas fa-boxes"></i>
-                Inventory Overview
-              </h2>
+        <!-- Transfers Tab -->
+        <div v-if="activeTab === 'transfers'" class="tab-pane active">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">🚚</div>
+              <div class="metric-content"><h3>Total Transfers</h3><p class="metric-value">{{ reports.transfers.total_count || 0 }}</p><small>Stock transfers</small></div>
             </div>
+            <div class="metric-card">
+              <div class="metric-icon">📥</div>
+              <div class="metric-content"><h3>Items In</h3><p class="metric-value">{{ reports.transfers.items_in || 0 }}</p><small>Items received</small></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📤</div>
+              <div class="metric-content"><h3>Items Out</h3><p class="metric-value">{{ reports.transfers.items_out || 0 }}</p><small>Items transferred</small></div>
+            </div>
+          </div>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-exchange-alt"></i> Stock Transfers</h2></div>
+            <div class="table-wrapper">
+              <div v-if="!reports.transfers.list?.length" class="empty-state"><i class="fas fa-inbox"></i><p>No transfers found</p></div>
+              <table v-else class="modern-table">
+                <thead><tr><th>Transfer ID</th><th>From</th><th>To</th><th>Items</th><th>Date</th></tr></thead>
+                <tbody>
+                  <tr v-for="t in reports.transfers.list" :key="t.id">
+                    <td class="id">#{{ t.id }}</td><td>{{ t.from_location || 'Main' }}</td><td>{{ t.to_location || 'Branch' }}</td><td>{{ t.items_count || 0 }} items</td><td>{{ formatDate(t.created_at) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div v-if="activeTab === 'analytics'" class="tab-pane active">
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-boxes"></i> Inventory Overview</h2></div>
             <div class="inventory-stats">
-              <div class="stat-item total-stat">
-                <span class="stat-label">Total Products</span>
-                <span class="stat-value">{{ inventoryData.total_products }}</span>
-              </div>
-              <div class="stat-item in-stock-stat">
-                <span class="stat-label">In Stock</span>
-                <span class="stat-value">{{ inventoryData.in_stock }}</span>
-              </div>
-              <div class="stat-item low-stock-stat">
-                <span class="stat-label">Low Stock</span>
-                <span class="stat-value">{{ inventoryData.low_stock }}</span>
-              </div>
-              <div class="stat-item out-stock-stat">
-                <span class="stat-label">Out of Stock</span>
-                <span class="stat-value">{{ inventoryData.out_of_stock }}</span>
+              <div class="stat-item"><span class="label">Total Products</span><span class="value">{{ reports.analytics.total_products }}</span></div>
+              <div class="stat-item"><span class="label">In Stock</span><span class="value in-stock">{{ reports.analytics.in_stock }}</span></div>
+              <div class="stat-item"><span class="label">Low Stock</span><span class="value low-stock">{{ reports.analytics.low_stock }}</span></div>
+              <div class="stat-item"><span class="label">Out of Stock</span><span class="value out-stock">{{ reports.analytics.out_of_stock }}</span></div>
+            </div>
+          </div>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-trophy"></i> Top Selling Products</h2></div>
+            <div class="products-list">
+              <div v-if="!reports.analytics.top_products?.length" class="empty-state"><p>No sales data</p></div>
+              <div v-for="(p, i) in reports.analytics.top_products" :key="p.id" class="product-row">
+                <div class="rank">{{ i + 1 }}</div>
+                <div class="info"><span class="name">{{ p.name }}</span><span class="sold">{{ p.total_sold }} sold</span></div>
+                <div class="badge">🏆</div>
               </div>
             </div>
           </div>
-
-          <!-- Top Selling Products -->
-          <div class="report-card top-selling-card">
-            <div class="card-header">
-              <h2 class="card-title">
-                <i class="fas fa-trophy"></i>
-                Top Selling Products
-              </h2>
-            </div>
-            <div class="top-products-list">
-              <div 
-                v-for="(product, index) in topSellingData.top_products" 
-                :key="product.product_id" 
-                class="top-product-item"
-              >
-                <div class="product-rank">{{ index + 1 }}</div>
-                <div class="product-info">
-                  <span class="product-name">{{ product.name }}</span>
-                  <span class="product-sales">{{ product.total_sold }} units sold</span>
-                </div>
-                <div class="product-badge">🏆</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Low Stock Alert -->
-          <div class="report-card low-stock-card">
-            <div class="card-header">
-              <h2 class="card-title warning-title">
-                <i class="fas fa-exclamation-triangle"></i>
-                Low Stock Alert
-                <span v-if="inventoryData.low_stock_products?.length > 0" class="alert-badge">
-                  {{ inventoryData.low_stock_products.length }}
-                </span>
-              </h2>
-            </div>
-            <div class="alert-content">
-              <div v-if="inventoryData.low_stock_products?.length === 0" class="empty-state">
-                <div class="empty-icon">✅</div>
-                <p>All products are well stocked!</p>
-              </div>
-              <div v-else class="alert-list">
-                <div 
-                  v-for="product in inventoryData.low_stock_products" 
-                  :key="product.id" 
-                  class="alert-item low-stock-item"
-                >
-                  <div class="alert-info">
-                    <span class="alert-product-name">{{ product.name }}</span>
-                    <span class="alert-stock">{{ product.stock_quantity }} remaining</span>
-                  </div>
-                  <div class="alert-status low-stock">⚠️</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Out of Stock Report -->
-          <div class="report-card out-of-stock-card">
-            <div class="card-header">
-              <h2 class="card-title urgent-title">
-                <i class="fas fa-ban"></i>
-                Out of Stock Report
-                <span v-if="outOfStockProducts.length > 0" class="urgent-badge">
-                  {{ outOfStockProducts.length }}
-                </span>
-              </h2>
-            </div>
-            <div class="alert-content">
-              <div v-if="outOfStockProducts.length === 0" class="empty-state">
-                <div class="empty-icon">🎉</div>
-                <p>No products are out of stock!</p>
-                <small>Great inventory management!</small>
-              </div>
-              <div v-else class="alert-list">
-                <div 
-                  v-for="product in outOfStockProducts" 
-                  :key="product.id" 
-                  class="alert-item out-of-stock-item"
-                >
-                  <div class="alert-info">
-                    <span class="alert-product-name">{{ product.name }}</span>
-                    <span class="alert-category">{{ product.category || 'No Category' }}</span>
-                    <span class="alert-price">Ksh {{ formatNumber(product.price) }}</span>
-                  </div>
-                  <div class="alert-status out-of-stock">🚫</div>
-                </div>
-              </div>
-              <div v-if="outOfStockProducts.length > 0" class="card-footer">
-                <button @click="goToProducts" class="action-btn urgent-btn">
-                  <i class="fas fa-plus"></i>
-                  Restock Products
-                </button>
-              </div>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-exclamation-triangle"></i> Low Stock Alert <span v-if="reports.analytics.low_stock_items?.length > 0" class="badge-count">{{ reports.analytics.low_stock_items.length }}</span></h2></div>
+            <div class="alert-list">
+              <div v-if="!reports.analytics.low_stock_items?.length" class="empty-state"><i class="fas fa-check-circle"></i><p>All products well stocked!</p></div>
+              <div v-for="p in reports.analytics.low_stock_items" :key="p.id" class="alert-row"><div><span class="name">{{ p.name }}</span><span class="qty">{{ p.stock_quantity }} left</span></div><span class="icon">⚠️</span></div>
             </div>
           </div>
         </div>
 
-        <!-- Recent Sales Table -->
-        <div class="report-card recent-sales-card">
-          <div class="card-header">
-            <h2 class="card-title">
-              <i class="fas fa-clock"></i>
-              Recent Sales Activity
-            </h2>
-          </div>
-          <div class="table-wrapper">
-            <div v-if="salesData.recent_sales?.length === 0" class="empty-table">
-              <div class="empty-icon">📋</div>
-              <p>No recent sales found</p>
+        <!-- Promotions Tab -->
+        <div v-if="activeTab === 'promotions'" class="tab-pane active">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">🎁</div>
+              <div class="metric-content"><h3>Active Promos</h3><p class="metric-value">{{ reports.promotions.active_count || 0 }}</p><small>Running</small></div>
             </div>
-            <table v-else class="modern-table">
-              <thead>
-                <tr>
-                  <th>Sale ID</th>
-                  <th>Amount</th>
-                  <th>Items</th>
-                  <th>Date & Time</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="sale in salesData.recent_sales" :key="sale.id" class="table-row">
-                  <td class="sale-id">#{{ sale.id }}</td>
-                  <td class="sale-amount">Ksh {{ formatNumber(sale.total) }}</td>
-                  <td class="sale-items">{{ sale.sale_items?.length || 0 }} items</td>
-                  <td class="sale-date">{{ formatDate(sale.created_at) }}</td>
-                  <td class="sale-status">
-                    <span class="status-badge completed">✅ Completed</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="metric-card">
+              <div class="metric-icon">💸</div>
+              <div class="metric-content"><h3>Discounts Given</h3><p class="metric-value">Ksh {{ formatNumber(reports.promotions.total_discount) }}</p><small>Total</small></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">✅</div>
+              <div class="metric-content"><h3>Usage Count</h3><p class="metric-value">{{ reports.promotions.total_usage || 0 }}</p><small>Times applied</small></div>
+            </div>
+          </div>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-percent"></i> Promotions Activity</h2></div>
+            <div class="table-wrapper">
+              <div v-if="!reports.promotions.list?.length" class="empty-state"><i class="fas fa-inbox"></i><p>No promotions found</p></div>
+              <table v-else class="modern-table">
+                <thead><tr><th>Promotion</th><th>Type</th><th>Scope</th><th>Usage</th><th>Discount</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr v-for="p in reports.promotions.list" :key="p.id">
+                    <td class="name">{{ p.name }}</td><td><span class="badge-type">{{ formatPromoType(p.type) }}</span></td><td><span class="badge-scope">{{ formatPromoScope(p.scope) }}</span></td><td>{{ p.usage_count || 0 }}</td><td class="amount">Ksh {{ formatNumber(p.total_discount || 0) }}</td><td><span class="status" :class="p.is_active ? 'active' : 'inactive'">{{ p.is_active ? '✅' : '❌' }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customers Tab -->
+        <div v-if="activeTab === 'customers'" class="tab-pane active">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">👥</div>
+              <div class="metric-content"><h3>Unique Customers</h3><p class="metric-value">{{ reports.customers.total_unique || 0 }}</p><small>Registered</small></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">🛍️</div>
+              <div class="metric-content"><h3>Total Served</h3><p class="metric-value">{{ reports.customers.total_served || 0 }}</p><small>In period</small></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">💎</div>
+              <div class="metric-content"><h3>Walk-ins</h3><p class="metric-value">{{ reports.customers.walk_ins || 0 }}</p><small>Unregistered</small></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📊</div>
+              <div class="metric-content"><h3>Avg. Spend</h3><p class="metric-value">Ksh {{ formatNumber(reports.customers.avg_spend) }}</p><small>Per customer</small></div>
+            </div>
+          </div>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-star"></i> Top Customers</h2></div>
+            <div class="table-wrapper">
+              <div v-if="!reports.customers.top_customers?.length" class="empty-state"><i class="fas fa-inbox"></i><p>No customer data</p></div>
+              <table v-else class="modern-table">
+                <thead><tr><th>Rank</th><th>Customer</th><th>Purchases</th><th>Total Spent</th><th>Avg Purchase</th><th>Last Visit</th></tr></thead>
+                <tbody>
+                  <tr v-for="(c, i) in reports.customers.top_customers" :key="c.id">
+                    <td class="rank">{{ i + 1 }}</td><td class="name">{{ c.name }}</td><td>{{ c.purchase_count }}</td><td class="amount">Ksh {{ formatNumber(c.total_spent) }}</td><td class="amount">Ksh {{ formatNumber(c.avg_purchase) }}</td><td>{{ formatDate(c.last_purchase_date) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -232,142 +256,245 @@ import axios from 'axios'
 export default {
   data() {
     return {
+      activeTab: 'sales',
       isLoading: true,
-      salesData: {
-        total_sales_month: 0,
-        total_transactions_month: 0,
-        average_transaction_value: 0,
-        total_items_sold_month: 0,
-        recent_sales: []
+      reportTabs: [
+        { id: 'sales', name: 'Sales', icon: 'fas fa-receipt' },
+        { id: 'transfers', name: 'Transfers', icon: 'fas fa-exchange-alt' },
+        { id: 'analytics', name: 'Analytics', icon: 'fas fa-chart-bar' },
+        { id: 'promotions', name: 'Promotions', icon: 'fas fa-percent' },
+        { id: 'customers', name: 'Customers', icon: 'fas fa-users' }
+      ],
+      filters: {
+        startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0]
       },
-      inventoryData: {
-        total_products: 0,
-        in_stock: 0,
-        low_stock: 0,
-        out_of_stock: 0,
-        low_stock_products: []
+      reports: {
+        sales: { total_revenue: 0, total_transactions: 0, avg_transaction: 0, total_items: 0, transactions: [] },
+        transfers: { total_count: 0, items_in: 0, items_out: 0, list: [] },
+        analytics: { total_products: 0, in_stock: 0, low_stock: 0, out_of_stock: 0, top_products: [], low_stock_items: [] },
+        promotions: { active_count: 0, total_discount: 0, total_usage: 0, list: [] },
+        customers: { total_unique: 0, total_served: 0, walk_ins: 0, avg_spend: 0, top_customers: [] }
       },
-      topSellingData: {
-        top_products: []
-      },
-      outOfStockProducts: []
+      // Cache system to prevent redundant API calls
+      dataCache: {},
+      cacheKey: '',
+      lastFetchTime: null
     }
   },
+  mounted() {
+    this.loadReports()
+  },
   methods: {
-    async fetchReports() {
+    // Generate cache key based on date filters
+    generateCacheKey() {
+      return `${this.filters.startDate}_${this.filters.endDate}`
+    },
+    
+    // Check if data is cached for current date range
+    isCached() {
+      const key = this.generateCacheKey()
+      return this.dataCache[key] !== undefined
+    },
+    
+    // Get cached data for current date range
+    getCachedData() {
+      const key = this.generateCacheKey()
+      return this.dataCache[key]
+    },
+    
+    // Save data to cache
+    cacheData(data) {
+      const key = this.generateCacheKey()
+      this.dataCache[key] = data
+      this.cacheKey = key
+      this.lastFetchTime = new Date()
+      console.log('✅ Data cached for:', key)
+    },
+    
+    async loadReports(forceRefresh = false) {
+      // Check cache first unless force refresh
+      if (!forceRefresh && this.isCached()) {
+        console.log('📦 Loading from cache...')
+        this.reports = this.getCachedData()
+        this.isLoading = false
+        return
+      }
+      
+      console.log('🌐 Fetching fresh data...')
       this.isLoading = true
       try {
-        const [salesResponse, inventoryResponse, topSellingResponse, outOfStockResponse] = await Promise.all([
-          axios.get('http://localhost:8000/reports/sales-overview'),
-          axios.get('http://localhost:8000/reports/inventory-summary'),
-          axios.get('http://localhost:8000/reports/top-selling-products'),
-          axios.get('http://localhost:8000/products/out-of-stock')
+        await Promise.all([
+          this.fetchSalesReport(),
+          this.fetchTransfersReport(),
+          this.fetchAnalyticsReport(),
+          this.fetchPromotionsReport(),
+          this.fetchCustomersReport()
         ])
-
-        this.salesData = salesResponse.data
-        this.inventoryData = inventoryResponse.data
-        this.topSellingData = topSellingResponse.data
-        this.outOfStockProducts = outOfStockResponse.data
-      } catch (error) {
-        console.error('Error fetching reports:', error)
+        
+        // Cache the fetched data
+        this.cacheData({ ...this.reports })
+      } catch (err) {
+        console.error('Error loading reports:', err)
       } finally {
         this.isLoading = false
       }
     },
+    async fetchSalesReport() {
+      try {
+        const res = await axios.get('/api/reports/sales', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        this.reports.sales = res.data
+      } catch (err) {
+        console.error('⚠️ Failed to load sales report:', err)
+        this.reports.sales = { total_revenue: 0, total_transactions: 0, avg_transaction: 0, total_items: 0, transactions: [] }
+      }
+    },
+    async fetchTransfersReport() {
+      try {
+        const res = await axios.get('/api/reports/transfers', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        this.reports.transfers = res.data
+      } catch (err) {
+        console.error('⚠️ Failed to load transfers report:', err)
+        this.reports.transfers = { total_count: 0, items_in: 0, items_out: 0, list: [] }
+      }
+    },
+    async fetchAnalyticsReport() {
+      try {
+        const res = await axios.get('/api/reports/analytics', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        this.reports.analytics = res.data
+      } catch (err) {
+        console.error('⚠️ Failed to load analytics report:', err)
+        this.reports.analytics = { total_products: 0, in_stock: 0, low_stock: 0, out_of_stock: 0, top_products: [], low_stock_items: [] }
+      }
+    },
+    async fetchPromotionsReport() {
+      try {
+        const res = await axios.get('/api/reports/promotions', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        this.reports.promotions = res.data
+      } catch (err) {
+        console.error('⚠️ Failed to load promotions report:', err)
+        this.reports.promotions = { active_count: 0, total_discount: 0, total_usage: 0, list: [] }
+      }
+    },
+    async fetchCustomersReport() {
+      try {
+        const res = await axios.get('/api/reports/customers', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        this.reports.customers = res.data
+      } catch (err) {
+        console.error('⚠️ Failed to load customers report:', err)
+        this.reports.customers = { total_unique: 0, total_served: 0, walk_ins: 0, avg_spend: 0, top_customers: [] }
+      }
+    },
+    async applyFilters() {
+      // Force refresh when filters change
+      await this.loadReports()
+    },
+    resetFilters() {
+      const today = new Date()
+      const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+      this.filters.startDate = thirtyDaysAgo.toISOString().split('T')[0]
+      this.filters.endDate = today.toISOString().split('T')[0]
+      this.applyFilters()
+    },
     async refreshAllReports() {
-      await this.fetchReports()
+      // Force refresh bypasses cache
+      await this.loadReports(true)
     },
-    formatNumber(value) {
-      if (!value || typeof value !== 'number') return '0.00'
-      return value.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    formatNumber(num) {
+      if (!num) return '0'
+      return new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num)
     },
-    formatDate(dateString) {
-      if (!dateString) return 'N/A'
-      return new Date(dateString).toLocaleString('en-KE', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+    formatDate(date) {
+      if (!date) return '-'
+      return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(date))
     },
-    goToProducts() {
-      this.$router.push('/products')
+    formatPromoType(type) {
+      const map = { percentage: 'Percentage', fixed_amount: 'Fixed Amount', buy_x_get_y: 'Buy X Get Y', spend_save: 'Spend & Save', bulk_discount: 'Bulk Discount' }
+      return map[type] || type
+    },
+    formatPromoScope(scope) {
+      const map = { all: 'All', category: 'Category', product: 'Product' }
+      return map[scope] || scope
     }
-  },
-  mounted() {
-    this.fetchReports()
   }
 }
 </script>
 
 <style scoped>
-/* Modern Report Page Styling */
+* { box-sizing: border-box; }
+
 .report-wrapper {
-  display: flex;
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  padding: 2rem 0;
 }
 
 .report-container {
-  flex: 1;
-  padding: 2rem;
-  overflow-y: auto;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  margin: 1rem;
-  border-radius: 24px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 2rem;
 }
 
-/* Header Section */
 .report-header {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+.header-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
 }
 
 .page-title {
-  font-size: 2.75rem;
+  font-size: 2.5rem;
   font-weight: 700;
-  margin: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.025em;
+  color: #2d3748;
+  margin: 0 0 0.5rem 0;
 }
 
 .page-subtitle {
-  color: #64748b;
-  font-size: 1.125rem;
-  margin: 0.5rem 0 0 0;
+  color: #718096;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.cache-info {
+  display: block;
+  margin-top: 0.5rem;
+  color: #a0aec0;
+  font-size: 0.85rem;
   font-weight: 500;
 }
 
+.cache-info i {
+  margin-right: 0.25rem;
+  color: #667eea;
+}
+
 .refresh-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   border: none;
   padding: 0.875rem 1.5rem;
-  border-radius: 16px;
-  cursor: pointer;
+  border-radius: 12px;
   font-weight: 600;
-  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 
 .refresh-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
 .refresh-btn:disabled {
@@ -379,510 +506,515 @@ export default {
   animation: spin 1s linear infinite;
 }
 
-/* Loading State */
-.loading-container {
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.filter-bar {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-group {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4a5568;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.date-input {
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 1rem;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.reset-btn {
+  margin-left: auto;
+  background: #e2e8f0;
+  color: #4a5568;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reset-btn:hover {
+  background: #cbd5e0;
+  transform: translateY(-2px);
+}
+
+.tabs-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.tabs-nav {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 1.25rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: #718096;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4rem 2rem;
-  color: #64748b;
+  gap: 0.75rem;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
 }
 
-.spinner-large {
-  width: 60px;
-  height: 60px;
-  border: 4px solid #e5e7eb;
-  border-top: 4px solid #667eea;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
+.tab-btn:hover {
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
 }
 
-/* Metrics Grid */
+.tab-btn.tab-active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.tabs-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 0 0 16px 16px;
+  padding: 2rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.5rem;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
 .metric-card {
-  background: white;
-  padding: 2rem;
-  border-radius: 20px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2));
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 16px;
+  padding: 1.5rem;
   display: flex;
-  align-items: center;
   gap: 1.5rem;
+  align-items: center;
   transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
 }
-
-.metric-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-}
-
-.sales-metric::before { background: linear-gradient(90deg, #10b981 0%, #059669 100%); }
-.transactions-metric::before { background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%); }
-.average-metric::before { background: linear-gradient(90deg, #8b5cf6 0%, #7c3aed 100%); }
-.items-metric::before { background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%); }
 
 .metric-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border-color: rgba(102, 126, 234, 0.3);
 }
 
 .metric-icon {
-  font-size: 3rem;
-  line-height: 1;
+  font-size: 2.5rem;
+  min-width: 60px;
+  text-align: center;
 }
 
 .metric-content h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #374151;
   margin: 0 0 0.5rem 0;
+  color: #4a5568;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .metric-value {
-  font-size: 2rem;
+  margin: 0 0 0.5rem 0;
+  color: #2d3748;
+  font-size: 1.75rem;
   font-weight: 700;
-  color: #111827;
-  margin: 0 0 0.25rem 0;
-  line-height: 1;
 }
 
-.metric-label {
+.metric-content small {
+  color: #a0aec0;
   font-size: 0.875rem;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-/* Reports Grid */
-.reports-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 2rem;
-  margin-bottom: 2.5rem;
 }
 
 .report-card {
   background: white;
-  border-radius: 20px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
   overflow: hidden;
+  margin-bottom: 2rem;
   transition: all 0.3s ease;
-  position: relative;
-}
-
-.report-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
 }
 
 .report-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border-color: #cbd5e0;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
 .card-header {
-  padding: 2rem 2rem 1rem 2rem;
-  border-bottom: 1px solid #f3f4f6;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 1.5rem;
 }
 
 .card-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #1e293b;
   margin: 0;
+  color: #2d3748;
+  font-size: 1.25rem;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  position: relative;
 }
 
-.warning-title {
-  color: #f59e0b;
+.card-title i {
+  color: #667eea;
 }
 
-.urgent-title {
-  color: #ef4444;
-}
-
-.alert-badge, .urgent-badge {
-  background: #f59e0b;
+.badge-count {
+  background: #e53e3e;
   color: white;
-  font-size: 0.75rem;
+  border-radius: 20px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
   margin-left: auto;
 }
 
-.urgent-badge {
-  background: #ef4444;
-}
-
-/* Inventory Stats */
 .inventory-stats {
-  padding: 1.5rem 2rem 2rem 2rem;
   display: grid;
-  gap: 1rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  padding: 1.5rem;
 }
 
 .stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  text-align: center;
   padding: 1rem;
-  background: #f8fafc;
   border-radius: 12px;
-  border-left: 4px solid #e2e8f0;
-  transition: all 0.3s ease;
+  background: #f8fafc;
 }
 
-.stat-item:hover {
-  background: #f1f5f9;
-  transform: translateX(4px);
+.stat-item .label {
+  display: block;
+  color: #718096;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
 }
 
-.total-stat { border-left-color: #3b82f6; }
-.in-stock-stat { border-left-color: #10b981; }
-.low-stock-stat { border-left-color: #f59e0b; }
-.out-stock-stat { border-left-color: #ef4444; }
-
-.stat-label {
-  font-weight: 500;
-  color: #374151;
-}
-
-.stat-value {
+.stat-item .value {
+  display: block;
+  color: #2d3748;
+  font-size: 1.75rem;
   font-weight: 700;
-  font-size: 1.25rem;
-  color: #111827;
 }
 
-/* Top Products List */
-.top-products-list {
-  padding: 1.5rem 2rem 2rem 2rem;
-  display: grid;
-  gap: 0.75rem;
+.stat-item .value.in-stock { color: #48bb78; }
+.stat-item .value.low-stock { color: #ed8936; }
+.stat-item .value.out-stock { color: #e53e3e; }
+
+.products-list,
+.alert-list {
+  padding: 1.5rem;
 }
 
-.top-product-item {
+.product-row,
+.alert-row {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: #f8fafc;
   border-radius: 12px;
+  background: #f8fafc;
+  margin-bottom: 0.75rem;
   transition: all 0.3s ease;
 }
 
-.top-product-item:hover {
-  background: #f1f5f9;
+.product-row:hover,
+.alert-row:hover {
+  background: #edf2f7;
   transform: translateX(4px);
 }
 
-.product-rank {
-  width: 2rem;
-  height: 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 50%;
+.product-row .rank,
+.product-row .badge {
+  font-size: 1.5rem;
+}
+
+.product-row .rank {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
   font-weight: 700;
-  font-size: 0.875rem;
-  flex-shrink: 0;
 }
 
-.product-info {
+.product-row .info,
+.alert-row > div {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
 
-.product-name {
+.product-row .name,
+.alert-row .name {
+  color: #2d3748;
   font-weight: 600;
-  color: #374151;
 }
 
-.product-sales {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-.product-badge {
-  font-size: 1.5rem;
-}
-
-/* Alert Content */
-.alert-content {
-  padding: 1.5rem 2rem 2rem 2rem;
+.product-row .sold,
+.alert-row .qty {
+  color: #a0aec0;
+  font-size: 0.85rem;
 }
 
 .empty-state {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: #718096;
 }
 
-.empty-icon {
-  font-size: 3rem;
+.empty-state i {
+  font-size: 2.5rem;
+  color: #cbd5e0;
   margin-bottom: 1rem;
-}
-
-.alert-list {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.alert-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-}
-
-.low-stock-item {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-left: 4px solid #f59e0b;
-}
-
-.out-of-stock-item {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  border-left: 4px solid #ef4444;
-}
-
-.alert-item:hover {
-  transform: translateX(4px);
-}
-
-.alert-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.alert-product-name {
-  font-weight: 600;
-  color: #374151;
-}
-
-.alert-stock, .alert-category, .alert-price {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-.alert-status {
-  font-size: 1.5rem;
-}
-
-.card-footer {
-  padding: 1rem 2rem 2rem 2rem;
-  border-top: 1px solid #f3f4f6;
-}
-
-.action-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 0.875rem 1.5rem;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.3s ease;
-  width: 100%;
-  justify-content: center;
-}
-
-.urgent-btn {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-}
-
-.action-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 8px -1px rgba(0, 0, 0, 0.15);
-}
-
-/* Recent Sales Table */
-.recent-sales-card {
-  grid-column: 1 / -1;
+  display: block;
 }
 
 .table-wrapper {
-  padding: 1.5rem 2rem 2rem 2rem;
-}
-
-.empty-table {
-  text-align: center;
-  padding: 3rem;
-  color: #6b7280;
+  overflow-x: auto;
+  padding: 1.5rem;
 }
 
 .modern-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .modern-table thead {
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .modern-table th {
-  padding: 1rem 1.5rem;
+  padding: 1rem;
   text-align: left;
+  color: #4a5568;
   font-weight: 600;
-  color: #374151;
   font-size: 0.875rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.5px;
 }
 
-.table-row {
-  border-bottom: 1px solid #f3f4f6;
-  transition: all 0.3s ease;
+.modern-table tbody tr {
+  border-bottom: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
 }
 
-.table-row:hover {
+.modern-table tbody tr:hover {
   background: #f8fafc;
 }
 
-.table-row:last-child {
-  border-bottom: none;
-}
-
 .modern-table td {
-  padding: 1rem 1.5rem;
-  color: #6b7280;
+  padding: 1rem;
+  color: #4a5568;
+  font-size: 0.95rem;
 }
 
-.sale-id {
+.modern-table td.id,
+.modern-table td.name {
+  color: #667eea;
   font-weight: 600;
-  color: #374151;
 }
 
-.sale-amount {
+.modern-table td.amount {
+  color: #48bb78;
   font-weight: 600;
-  color: #059669;
 }
 
-.sale-items {
-  color: #8b5cf6;
-  font-weight: 500;
+.modern-table td.rank {
+  font-weight: 600;
 }
 
-.sale-date {
-  font-size: 0.875rem;
-}
-
-.status-badge {
-  background: #dcfce7;
-  color: #166534;
+.badge-type,
+.badge-scope {
+  background: #edf2f7;
   padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: inline-block;
 }
 
-/* Animations */
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.status {
+  font-size: 1rem;
 }
 
-/* Responsive Design */
+.status.active { color: #48bb78; }
+.status.inactive { color: #e53e3e; }
+
+@media (max-width: 1200px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .inventory-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .report-container {
-    margin: 0.5rem;
-    padding: 1.5rem;
-    border-radius: 16px;
+    padding: 0 1rem;
   }
-  
-  .page-title {
-    font-size: 2rem;
-  }
-  
   .report-header {
-    flex-direction: column;
-    align-items: stretch;
+    padding: 1.5rem;
   }
-  
+  .header-top {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .refresh-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .filter-bar {
+    flex-direction: column;
+    padding: 1rem;
+  }
+  .filter-group,
+  .date-input,
+  .reset-btn {
+    width: 100%;
+  }
+  .reset-btn {
+    margin-left: 0;
+  }
+  .page-title {
+    font-size: 1.75rem;
+  }
   .metrics-grid {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
-  
-  .reports-grid {
-    grid-template-columns: 1fr;
-  }
-
   .metric-card {
-    padding: 1.5rem;
+    padding: 1rem;
   }
-
-  .card-header {
-    padding: 1.5rem 1.5rem 1rem 1.5rem;
+  .metric-icon {
+    font-size: 2rem;
+    min-width: 50px;
   }
-
-  .inventory-stats, .alert-content, .table-wrapper {
-    padding: 1rem 1.5rem 1.5rem 1.5rem;
+  .metric-value {
+    font-size: 1.5rem;
+  }
+  .inventory-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+  }
+  .tab-btn {
+    padding: 1rem 1.25rem;
+    font-size: 0.9rem;
+  }
+  .modern-table {
+    font-size: 0.85rem;
+  }
+  .modern-table th,
+  .modern-table td {
+    padding: 0.75rem 0.5rem;
   }
 }
 
 @media (max-width: 480px) {
-  .report-container {
-    margin: 0.25rem;
-    padding: 1rem;
-  }
-  
   .page-title {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
   }
-
+  .metrics-grid {
+    gap: 0.75rem;
+  }
   .metric-card {
     flex-direction: column;
     text-align: center;
-    gap: 1rem;
+    padding: 0.75rem;
   }
-
   .metric-icon {
-    font-size: 2.5rem;
+    font-size: 2rem;
   }
-
+  .metric-value {
+    font-size: 1.25rem;
+  }
+  .inventory-stats {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  .tab-btn {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  .tab-btn i {
+    display: none;
+  }
   .modern-table {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
   }
-
   .modern-table th,
   .modern-table td {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.25rem;
   }
 }
 </style>

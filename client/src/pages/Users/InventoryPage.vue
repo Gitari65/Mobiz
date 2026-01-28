@@ -90,6 +90,14 @@
               <i class="fas fa-truck"></i>
               Restock
             </button>
+            <button @click="openTransferModal" class="control-btn outline">
+              <i class="fas fa-exchange-alt"></i>
+              Transfer Stock
+            </button>
+            <button @click="viewTransferHistory" class="control-btn outline">
+              <i class="fas fa-history"></i>
+              Transfer History
+            </button>
             <button @click="exportData" class="control-btn outline">
               <i class="fas fa-download"></i>
               Export
@@ -117,7 +125,7 @@
               <span>Product Inventory</span>
             </div>
             <div class="table-options">
-              <select v-model="pageSize" class="page-select">
+              <select v-model.number="pageSize" class="page-select">
                 <option value="10">10 per page</option>
                 <option value="25">25 per page</option>
                 <option value="50">50 per page</option>
@@ -216,10 +224,10 @@
                   </td>
                   <td>
                     <div class="action-group">
-                      <button @click="editProduct(product)" class="action-btn edit">
+                      <button @click="editProduct(product)" class="action-btn edit" title="Edit Product">
                         <i class="fas fa-edit"></i>
                       </button>
-                      <button @click="confirmDelete(product)" class="action-btn delete">
+                      <button @click="confirmDelete(product)" class="action-btn delete" title="Delete Product">
                         <i class="fas fa-trash"></i>
                       </button>
                     </div>
@@ -270,7 +278,7 @@
 
     <!-- Modals -->
     <!-- Delete Modal -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+    <div v-if="showDeleteModal" class="modal-overlay">
       <div class="modal delete-modal">
         <div class="modal-header">
           <h3>
@@ -297,7 +305,7 @@
     </div>
 
     <!-- Restock Modal -->
-    <div v-if="showReplenishModal" class="modal-overlay" @click.self="closeReplenishModal">
+    <div v-if="showReplenishModal" class="modal-overlay">
       <div class="modal restock-modal">
         <div class="modal-header">
           <h3>
@@ -310,34 +318,77 @@
         </div>
         <div class="modal-body">
           <div v-if="replenishStep === 1" class="restock-form">
-            <h4>Add Items to Restock</h4>
-            <div class="form-grid">
-              <div class="form-group">
-                <label>Product</label>
-                <select v-model="replenishForm.product_id" required>
-                  <option value="">Select Product</option>
-                  <option v-for="product in products" :key="product.id" :value="product.id">
-                    {{ product.name }} (Stock: {{ product.stock }})
-                  </option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Quantity</label>
-                <input v-model.number="replenishForm.quantity" type="number" min="1" required />
-              </div>
-              <div class="form-group">
-                <label>Cost per Unit</label>
-                <input v-model.number="replenishForm.cost" type="number" step="0.01" min="0" required />
-              </div>
-              <div class="form-group full-width">
-                <label>Notes (Optional)</label>
-                <textarea v-model="replenishForm.notes" placeholder="Additional notes..."></textarea>
+            <h4>Restock Details</h4>
+            
+            <!-- Invoice & Supplier Information -->
+            <div class="form-section">
+              <h5><i class="fas fa-file-invoice"></i> Invoice Information</h5>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Invoice Number <span class="required">*</span></label>
+                  <input v-model="restockDetails.invoice_number" type="text" placeholder="INV-2026-001" required />
+                </div>
+                <div class="form-group">
+                  <label>Invoice Date <span class="required">*</span></label>
+                  <input v-model="restockDetails.invoice_date" type="date" required />
+                </div>
+                <div class="form-group">
+                  <label>Supplier <span class="required">*</span></label>
+                  <select v-model="restockDetails.supplier_id" required>
+                    <option value="">Select Supplier</option>
+                    <option v-for="supplier in suppliers" :key="supplier.id" :value="supplier.id">
+                      {{ supplier.name }}
+                    </option>
+                    <option value="others">Others (Custom)</option>
+                  </select>
+                </div>
+                <div v-if="restockDetails.supplier_id === 'others'" class="form-group">
+                  <label>Custom Supplier Name <span class="required">*</span></label>
+                  <input v-model="restockDetails.custom_supplier" type="text" placeholder="Enter supplier name" required />
+                </div>
+                <div class="form-group">
+                  <label>Warehouse</label>
+                  <select v-model="restockDetails.warehouse_id">
+                    <option value="">Select Warehouse</option>
+                    <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
+                      {{ warehouse.name }}
+                    </option>
+                  </select>
+                </div>
               </div>
             </div>
-            <button @click="addReplenishItem" class="add-btn" :disabled="!canAddReplenishItem">
-              <i class="fas fa-plus"></i>
-              Add to List
-            </button>
+
+            <!-- Products to Restock -->
+            <div class="form-section">
+              <h5><i class="fas fa-boxes"></i> Add Products</h5>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Product</label>
+                  <select v-model="replenishForm.product_id" required>
+                    <option value="">Select Product</option>
+                    <option v-for="product in products" :key="product.id" :value="product.id">
+                      {{ product.name }} (Stock: {{ product.stock }})
+                    </option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Quantity</label>
+                  <input v-model.number="replenishForm.quantity" type="number" min="1" required />
+                </div>
+                <div class="form-group">
+                  <label>Cost per Unit</label>
+                  <input v-model.number="replenishForm.cost" type="number" step="0.01" min="0" required />
+                </div>
+                <div class="form-group full-width">
+                  <label>Item Notes (Optional)</label>
+                  <textarea v-model="replenishForm.notes" placeholder="Notes for this item..." rows="2"></textarea>
+                </div>
+              </div>
+              <button @click="addReplenishItem" class="add-btn" :disabled="!canAddReplenishItem">
+                <i class="fas fa-plus"></i>
+                Add to List
+              </button>
+            </div>
           </div>
 
           <div v-if="replenishItems.length > 0" class="restock-list">
@@ -354,29 +405,93 @@
                 </button>
               </div>
             </div>
-            <div class="total-cost">
-              Total: {{ formatCurrency(replenishTotal) }}
+            <div class="cost-breakdown">
+              <div class="cost-row">
+                <span>Subtotal:</span>
+                <span>{{ formatCurrency(replenishTotal) }}</span>
+              </div>
+              <div class="cost-row">
+                <label>Tax Amount:</label>
+                <input v-model.number="restockDetails.tax_amount" type="number" step="0.01" min="0" class="inline-input" />
+              </div>
+              <div class="cost-row">
+                <label>Shipping Cost:</label>
+                <input v-model.number="restockDetails.shipping_cost" type="number" step="0.01" min="0" class="inline-input" />
+              </div>
+              <div class="cost-row">
+                <label>Discount:</label>
+                <input v-model.number="restockDetails.discount" type="number" step="0.01" min="0" class="inline-input" />
+              </div>
+              <div class="cost-row total">
+                <strong>Grand Total:</strong>
+                <strong>{{ formatCurrency(grandTotal) }}</strong>
+              </div>
             </div>
           </div>
 
           <div v-if="replenishStep === 2" class="order-summary">
-            <h4>Order Summary</h4>
-            <div class="summary-list">
-              <div v-for="(item, index) in replenishItems" :key="index" class="summary-item">
-                <span>{{ getProductName(item.product_id) }}</span>
-                <span>{{ item.quantity }} units</span>
-                <span>{{ formatCurrency(item.quantity * item.cost) }}</span>
+            <h4>Restock Summary</h4>
+            
+            <div class="summary-section">
+              <h5>Invoice Details</h5>
+              <div class="detail-row">
+                <span>Invoice Number:</span>
+                <strong>{{ restockDetails.invoice_number }}</strong>
+              </div>
+              <div class="detail-row">
+                <span>Invoice Date:</span>
+                <strong>{{ restockDetails.invoice_date }}</strong>
+              </div>
+              <div class="detail-row">
+                <span>Supplier:</span>
+                <strong>{{ getSupplierName() }}</strong>
+              </div>
+              <div class="detail-row" v-if="restockDetails.warehouse_id">
+                <span>Warehouse:</span>
+                <strong>{{ getWarehouseName(restockDetails.warehouse_id) }}</strong>
               </div>
             </div>
-            <div class="summary-total">
-              Total: {{ formatCurrency(replenishTotal) }}
+
+            <div class="summary-section">
+              <h5>Items ({{ replenishItems.length }})</h5>
+              <div class="summary-list">
+                <div v-for="(item, index) in replenishItems" :key="index" class="summary-item">
+                  <span>{{ getProductName(item.product_id) }}</span>
+                  <span>{{ item.quantity }} units × {{ formatCurrency(item.cost) }}</span>
+                  <span>{{ formatCurrency(item.quantity * item.cost) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="summary-section">
+              <h5>Cost Breakdown</h5>
+              <div class="detail-row">
+                <span>Subtotal:</span>
+                <span>{{ formatCurrency(replenishTotal) }}</span>
+              </div>
+              <div class="detail-row" v-if="restockDetails.tax_amount > 0">
+                <span>Tax:</span>
+                <span>{{ formatCurrency(restockDetails.tax_amount) }}</span>
+              </div>
+              <div class="detail-row" v-if="restockDetails.shipping_cost > 0">
+                <span>Shipping:</span>
+                <span>{{ formatCurrency(restockDetails.shipping_cost) }}</span>
+              </div>
+              <div class="detail-row" v-if="restockDetails.discount > 0">
+                <span>Discount:</span>
+                <span>-{{ formatCurrency(restockDetails.discount) }}</span>
+              </div>
+              <div class="detail-row total">
+                <strong>Grand Total:</strong>
+                <strong>{{ formatCurrency(grandTotal) }}</strong>
+              </div>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <div v-if="replenishStep === 1">
             <button @click="closeReplenishModal" class="modal-btn secondary">Cancel</button>
-            <button @click="replenishStep = 2" class="modal-btn primary" :disabled="replenishItems.length === 0">
+            <button @click="replenishStep = 2" class="modal-btn primary" :disabled="replenishItems.length === 0 || !restockDetails.invoice_number || !restockDetails.invoice_date || !restockDetails.supplier_id || (restockDetails.supplier_id === 'others' && !restockDetails.custom_supplier)">
               Review Order
             </button>
           </div>
@@ -384,6 +499,264 @@
             <button @click="replenishStep = 1" class="modal-btn secondary">Back</button>
             <button @click="saveReplenish" class="modal-btn primary">Confirm & Save</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stock Transfer Modal -->
+    <div v-if="showTransferModal" class="modal-overlay">
+      <div class="modal transfer-modal">
+        <div class="modal-header">
+          <h3>
+            <i class="fas fa-exchange-alt"></i>
+            Transfer Stock
+          </h3>
+          <button @click="closeTransferModal" class="close-btn">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="executeTransfer" class="transfer-form">
+            <!-- Transfer Items -->
+            <div class="transfer-items">
+              <div class="transfer-item" v-for="(item, index) in transferItems" :key="index">
+                <div class="form-group">
+                  <label>
+                    <i class="fas fa-box"></i>
+                    Product <span class="required">*</span>
+                  </label>
+                  <select v-model="item.product_id" @change="onTransferProductChange(index)" required class="form-select">
+                    <option value="">Select Product</option>
+                    <option v-for="product in products" :key="product.id" :value="product.id">
+                      {{ product.name }} (Stock: {{ product.stock }}, {{ getWarehouseName(product.warehouse_id) }})
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>
+                    <i class="fas fa-boxes"></i>
+                    Quantity <span class="required">*</span>
+                  </label>
+                  <input
+                    v-model.number="item.quantity"
+                    type="number"
+                    :max="getProductStock(item.product_id)"
+                    min="1"
+                    placeholder="Enter quantity"
+                    required
+                    class="form-input"
+                  />
+                  <small class="helper-text">
+                    Available: <strong>{{ getProductStock(item.product_id) }}</strong> | From: {{ getProductWarehouseName(item.product_id) || 'N/A' }}
+                  </small>
+                </div>
+
+                <div class="form-group inline-actions">
+                  <button type="button" class="action-btn add" @click="addTransferItem" title="Add another product">
+                    <i class="fas fa-plus"></i>
+                  </button>
+                  <button type="button" class="action-btn delete" @click="removeTransferItem(index)" :disabled="transferItems.length === 1" title="Remove this product">
+                    <i class="fas fa-minus"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Transfer Type -->
+            <div class="form-group">
+              <label>
+                <i class="fas fa-arrows-alt-h"></i>
+                Transfer Type <span class="required">*</span>
+              </label>
+              <select v-model="transferForm.destination_type" required class="form-select">
+                <option value="">Select Transfer Type</option>
+                <option value="warehouse">Transfer to Another Warehouse</option>
+                <option value="supplier_return">Return to Supplier</option>
+                <option value="write_off">Write Off (Damage/Expiry)</option>
+                <option value="adjustment_out">Adjustment Out (Inventory Correction)</option>
+              </select>
+              <small class="helper-text">Choose where the stock will be transferred</small>
+            </div>
+
+            <!-- To Warehouse (conditional) -->
+            <div v-if="transferForm.destination_type === 'warehouse'" class="form-group">
+              <label>
+                <i class="fas fa-warehouse"></i>
+                To Warehouse <span class="required">*</span>
+              </label>
+              <select v-model="transferForm.to_warehouse_id" required class="form-select">
+                <option value="">Select Destination Warehouse</option>
+                <option 
+                  v-for="warehouse in availableWarehouses" 
+                  :key="warehouse.id" 
+                  :value="warehouse.id"
+                >
+                  {{ warehouse.name }}
+                  <span v-if="!warehouse.company_id"> (System Default)</span>
+                </option>
+              </select>
+            </div>
+
+            <!-- Supplier Name (conditional) -->
+            <div v-if="transferForm.destination_type === 'supplier_return'" class="form-group">
+              <label>
+                <i class="fas fa-truck"></i>
+                Supplier Name
+              </label>
+              <input 
+                v-model="transferForm.external_target"
+                type="text"
+                placeholder="Enter supplier name"
+                class="form-input"
+              />
+            </div>
+
+            <!-- Reason -->
+            <div class="form-group">
+              <label>
+                <i class="fas fa-info-circle"></i>
+                Reason <span class="recommended">(Recommended for reports)</span>
+              </label>
+              <input 
+                v-model="transferForm.reason"
+                type="text"
+                placeholder="e.g., Damaged items, Expired on 2026-01-15, Stock rebalancing"
+                class="form-input"
+              />
+            </div>
+
+            <!-- Reference Number -->
+            <div class="form-group">
+              <label>
+                <i class="fas fa-hashtag"></i>
+                Reference Number <span class="recommended">(Optional)</span>
+              </label>
+              <input 
+                v-model="transferForm.reference"
+                type="text"
+                placeholder="e.g., RET-2026-001, WO-2026-045, Invoice #INV-123"
+                class="form-input"
+              />
+              <small class="helper-text">For tracking and audit purposes</small>
+            </div>
+
+            <!-- Notes -->
+            <div class="form-group">
+              <label>
+                <i class="fas fa-sticky-note"></i>
+                Additional Notes
+              </label>
+              <textarea 
+                v-model="transferForm.note"
+                placeholder="Any additional information about this transfer..."
+                rows="3"
+                class="form-textarea"
+              ></textarea>
+            </div>
+
+            <!-- Tracking Info -->
+            <div class="tracking-info">
+              <div class="tracking-row">
+                <i class="fas fa-user"></i>
+                <span>Transferred by: <strong>{{ currentUserName }}</strong></span>
+              </div>
+              <div class="tracking-row">
+                <i class="fas fa-calendar"></i>
+                <span>Date: <strong>{{ currentDate }}</strong></span>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeTransferModal" class="modal-btn secondary">
+            <i class="fas fa-times"></i>
+            Cancel
+          </button>
+          <button @click="executeTransfer" class="modal-btn primary" :disabled="isTransferring || !isTransferValid">
+            <i class="fas fa-exchange-alt"></i>
+            {{ isTransferring ? 'Transferring...' : 'Transfer Stock' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transfer History Modal -->
+    <div v-if="showTransferHistory" class="modal-overlay">
+      <div class="modal history-modal">
+        <div class="modal-header">
+          <h3>
+            <i class="fas fa-history"></i>
+            Stock Transfer History
+          </h3>
+          <button @click="closeTransferHistory" class="close-btn">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div v-if="loadingHistory" class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading transfer history...</p>
+          </div>
+          <div v-else-if="transferHistory.length === 0" class="empty-state">
+            <i class="fas fa-inbox"></i>
+            <p>No transfer history found</p>
+          </div>
+          <div v-else class="history-table-container">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Transfer #</th>
+                  <th>Date</th>
+                  <th>Product</th>
+                  <th>Type</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Qty</th>
+                  <th>By</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="transfer in transferHistory" :key="transfer.id">
+                  <td>
+                    <span class="transfer-number">{{ transfer.transfer_number }}</span>
+                  </td>
+                  <td>{{ formatDateTime(transfer.created_at) }}</td>
+                  <td>{{ transfer.product_name }}</td>
+                  <td>
+                    <span class="transfer-type-badge" :class="transfer.transfer_type">
+                      {{ formatTransferType(transfer.transfer_type) }}
+                    </span>
+                  </td>
+                  <td>{{ transfer.from_warehouse_name || 'N/A' }}</td>
+                  <td>
+                    <span v-if="transfer.transfer_type === 'warehouse'">
+                      {{ transfer.to_warehouse_name || 'N/A' }}
+                    </span>
+                    <span v-else-if="transfer.transfer_type === 'supplier_return'" class="external-target">
+                      {{ transfer.external_target || 'Supplier' }}
+                    </span>
+                    <span v-else class="removed-badge">Removed</span>
+                  </td>
+                  <td><strong>{{ transfer.quantity }}</strong></td>
+                  <td>{{ transfer.user_name || 'N/A' }}</td>
+                  <td>
+                    <span class="reason-text" :title="transfer.reason">
+                      {{ transfer.reason || '-' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeTransferHistory" class="modal-btn secondary">Close</button>
+          <button @click="exportTransferHistory" class="modal-btn outline">
+            <i class="fas fa-download"></i>
+            Export History
+          </button>
         </div>
       </div>
     </div>
@@ -414,13 +787,45 @@ export default {
         cost: 0,
         notes: ''
       },
-      replenishItems: []
+      replenishItems: [],
+      restockDetails: {
+        invoice_number: '',
+        invoice_date: new Date().toISOString().split('T')[0],
+        supplier_id: '',
+        custom_supplier: '',
+        warehouse_id: '',
+        tax_amount: 0,
+        shipping_cost: 0,
+        discount: 0,
+        notes: ''
+      },
+      // Stock Transfer
+      showTransferModal: false,
+      isTransferring: false,
+      warehouses: [],
+      suppliers: [],
+      transferItems: [
+        { product_id: '', quantity: '' }
+      ],
+      transferForm: {
+        destination_type: '',
+        to_warehouse_id: '',
+        reason: '',
+        reference: '',
+        external_target: '',
+        note: ''
+      },
+      // Transfer History
+      showTransferHistory: false,
+      transferHistory: [],
+      loadingHistory: false,
+      currentUser: null
     }
   },
   computed: {
     filteredProducts() {
       if (!this.searchQuery) return this.products
-      
+
       const query = this.searchQuery.toLowerCase()
       return this.products.filter(product =>
         product.name.toLowerCase().includes(query) ||
@@ -430,16 +835,16 @@ export default {
     },
     sortedProducts() {
       if (!this.sortKey) return this.filteredProducts
-      
+
       return [...this.filteredProducts].sort((a, b) => {
         let aVal = a[this.sortKey]
         let bVal = b[this.sortKey]
-        
+
         if (this.sortKey === 'price' || this.sortKey === 'stock') {
           aVal = parseFloat(aVal) || 0
           bVal = parseFloat(bVal) || 0
         }
-        
+
         if (aVal < bVal) return this.sortAsc ? -1 : 1
         if (aVal > bVal) return this.sortAsc ? 1 : -1
         return 0
@@ -463,7 +868,7 @@ export default {
       const total = this.totalPages
       const current = this.currentPage
       const pages = []
-      
+
       if (total <= 7) {
         for (let i = 1; i <= total; i++) {
           pages.push(i)
@@ -485,7 +890,7 @@ export default {
           pages.push(total)
         }
       }
-      
+
       return pages
     },
     totalProducts() {
@@ -503,19 +908,48 @@ export default {
       return this.products.filter(product => product.stock === 0).length
     },
     canAddReplenishItem() {
-      return this.replenishForm.product_id && 
-             this.replenishForm.quantity > 0 && 
+      return this.replenishForm.product_id &&
+             this.replenishForm.quantity > 0 &&
              this.replenishForm.cost >= 0
     },
     replenishTotal() {
       return this.replenishItems.reduce((sum, item) => sum + (item.quantity * item.cost), 0)
+    },
+    grandTotal() {
+      const subtotal = this.replenishTotal
+      const tax = parseFloat(this.restockDetails.tax_amount) || 0
+      const shipping = parseFloat(this.restockDetails.shipping_cost) || 0
+      const discount = parseFloat(this.restockDetails.discount) || 0
+      return subtotal + tax + shipping - discount
+    },
+    availableWarehouses() {
+      return this.warehouses
+    },
+    isTransferValid() {
+      if (!this.transferForm.destination_type) return false
+      if (this.transferForm.destination_type === 'warehouse' && !this.transferForm.to_warehouse_id) return false
+      if (!this.transferItems.length) return false
+      return this.transferItems.every(item => {
+        const qty = Number(item.quantity)
+        const product = this.getProductById(item.product_id)
+        if (!product) return false
+        if (!qty || qty <= 0) return false
+        if (qty > product.stock) return false
+        return true
+      })
+    },
+    currentUserName() {
+      return this.currentUser?.name || this.currentUser?.email || 'Unknown User'
+    },
+    currentDate() {
+      return new Date().toLocaleString()
     }
   },
   methods: {
     async fetchInventory() {
       this.isLoading = true
       try {
-        const response = await axios.get('/api/products')
+        const response = await axios.get('http://localhost:8000/products')
         this.products = response.data.data || response.data || []
       } catch (error) {
         console.error('Error fetching inventory:', error)
@@ -601,7 +1035,7 @@ export default {
     },
     async deleteProduct() {
       if (!this.productToDelete) return
-      
+
       this.isDeleting = true
       try {
         await axios.delete(`/api/products/${this.productToDelete.id}`)
@@ -615,11 +1049,9 @@ export default {
       }
     },
     openAddProductModal() {
-      // This should be handled by parent component or router
       this.$emit('open-add-product')
     },
     editProduct(product) {
-      // This should be handled by parent component or router
       this.$emit('edit-product', product)
     },
     openReplenishModal() {
@@ -632,6 +1064,17 @@ export default {
       this.replenishStep = 1
       this.resetReplenishForm()
       this.replenishItems = []
+      this.restockDetails = {
+        invoice_number: '',
+        invoice_date: new Date().toISOString().split('T')[0],
+        supplier_id: '',
+        custom_supplier: '',
+        warehouse_id: '',
+        tax_amount: 0,
+        shipping_cost: 0,
+        discount: 0,
+        notes: ''
+      }
     },
     resetReplenishForm() {
       this.replenishForm = {
@@ -643,14 +1086,14 @@ export default {
     },
     addReplenishItem() {
       if (!this.canAddReplenishItem) return
-      
+
       this.replenishItems.push({
         product_id: this.replenishForm.product_id,
         quantity: this.replenishForm.quantity,
         cost: this.replenishForm.cost,
         notes: this.replenishForm.notes
       })
-      
+
       this.resetReplenishForm()
     },
     removeReplenishItem(index) {
@@ -662,24 +1105,249 @@ export default {
     },
     async saveReplenish() {
       try {
+        // Determine supplier info
+        let supplierId = null
+        let supplierName = ''
+        
+        if (this.restockDetails.supplier_id === 'others') {
+          supplierName = this.restockDetails.custom_supplier
+        } else {
+          supplierId = parseInt(this.restockDetails.supplier_id)
+          const supplier = this.suppliers.find(s => s.id === supplierId)
+          supplierName = supplier ? supplier.name : ''
+        }
+
         const payload = {
+          supplier_id: supplierId,
+          supplier_name: supplierName,
+          invoice_number: this.restockDetails.invoice_number,
+          invoice_date: this.restockDetails.invoice_date,
+          warehouse_id: this.restockDetails.warehouse_id ? parseInt(this.restockDetails.warehouse_id) : null,
+          tax_amount: parseFloat(this.restockDetails.tax_amount) || 0,
+          shipping_cost: parseFloat(this.restockDetails.shipping_cost) || 0,
+          discount: parseFloat(this.restockDetails.discount) || 0,
+          notes: this.restockDetails.notes || '',
           items: this.replenishItems
         }
-        await axios.post('/api/inventory/restock', payload)
-        await this.fetchInventory() // Refresh data
+        
+        await axios.post('http://localhost:8000/purchases', payload)
+        alert('Restock completed successfully!')
+        await this.fetchInventory()
         this.closeReplenishModal()
       } catch (error) {
         console.error('Error saving restock:', error)
-        alert('Failed to save restock. Please try again.')
+        const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Failed to save restock. Please try again.'
+        alert(errorMessage)
       }
     },
     exportData() {
-      // Implement export functionality
       console.log('Export data')
+    },
+    // Stock Transfer
+    async fetchWarehouses() {
+      try {
+        const response = await axios.get('http://localhost:8000/warehouses')
+        this.warehouses = response.data
+      } catch (error) {
+        console.error('Error fetching warehouses:', error)
+      }
+    },
+    async fetchSuppliers() {
+      try {
+        const response = await axios.get('http://localhost:8000/suppliers')
+        this.suppliers = response.data.data || response.data || []
+      } catch (error) {
+        console.error('Error fetching suppliers:', error)
+      }
+    },
+    async fetchCurrentUser() {
+      try {
+        const response = await axios.get('http://localhost:8000/api/user')
+        this.currentUser = response.data
+      } catch (error) {
+        console.error('Error fetching current user:', error)
+      }
+    },
+    openTransferModal() {
+      this.transferForm = {
+        destination_type: '',
+        to_warehouse_id: '',
+        reason: '',
+        reference: '',
+        external_target: '',
+        note: ''
+      }
+      this.transferItems = [{ product_id: '', quantity: '' }]
+      this.showTransferModal = true
+    },
+    closeTransferModal() {
+      this.showTransferModal = false
+      this.transferForm = {
+        destination_type: '',
+        to_warehouse_id: '',
+        reason: '',
+        reference: '',
+        external_target: '',
+        note: ''
+      }
+      this.transferItems = [{ product_id: '', quantity: '' }]
+    },
+    async executeTransfer() {
+      if (!this.isTransferValid) return
+
+      this.isTransferring = true
+      try {
+        const payloads = this.transferItems.map(item => {
+          const product = this.getProductById(item.product_id)
+          
+          // Check if product has warehouse_id
+          if (!product.warehouse_id) {
+            throw new Error(`Product "${product.name}" is not assigned to any warehouse`)
+          }
+          
+          const payload = {
+            product_id: product.id,
+            from_warehouse_id: product.warehouse_id,
+            quantity: parseInt(item.quantity),
+            destination_type: this.transferForm.destination_type,
+            reason: this.transferForm.reason || '',
+            reference: this.transferForm.reference || '',
+            note: this.transferForm.note || ''
+          }
+          
+          // Add to_warehouse_id for warehouse transfers
+          if (this.transferForm.destination_type === 'warehouse') {
+            payload.to_warehouse_id = parseInt(this.transferForm.to_warehouse_id)
+          }
+          
+          // Add external_target for supplier returns
+          if (this.transferForm.destination_type === 'supplier_return') {
+            payload.external_target = this.transferForm.external_target || ''
+          }
+          
+          console.log('Transfer payload:', payload)
+          return payload
+        })
+
+        await Promise.all(payloads.map(payload => axios.post('http://localhost:8000/products/transfer', payload)))
+
+        alert('Stock transferred successfully!')
+        await this.fetchInventory()
+        this.closeTransferModal()
+      } catch (error) {
+        console.error('Error transferring stock:', error)
+        console.error('Error response:', error.response?.data)
+        const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message
+        alert('Failed to transfer stock: ' + errorMessage)
+      } finally {
+        this.isTransferring = false
+      }
+    },
+    async viewTransferHistory() {
+      this.showTransferHistory = true
+      this.loadingHistory = true
+      try {
+        const response = await axios.get('http://localhost:8000/warehouse-transfers')
+        this.transferHistory = response.data
+      } catch (error) {
+        console.error('Error fetching transfer history:', error)
+        alert('Failed to load transfer history')
+      } finally {
+        this.loadingHistory = false
+      }
+    },
+    closeTransferHistory() {
+      this.showTransferHistory = false
+    },
+    exportTransferHistory() {
+      if (this.transferHistory.length === 0) return
+
+      const headers = ['Transfer #', 'Date', 'Product', 'Type', 'From', 'To', 'Quantity', 'By', 'Reason', 'Reference', 'Notes']
+      const csvData = this.transferHistory.map(t => [
+        t.transfer_number,
+        this.formatDateTime(t.created_at),
+        t.product_name,
+        this.formatTransferType(t.transfer_type),
+        t.from_warehouse_name || 'N/A',
+        t.transfer_type === 'warehouse' ? (t.to_warehouse_name || 'N/A') : (t.external_target || 'Removed'),
+        t.quantity,
+        t.user_name || 'N/A',
+        t.reason || '-',
+        t.reference || '-',
+        t.note || '-'
+      ])
+
+      const csv = [
+        headers.join(','),
+        ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n')
+
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `transfer-history-${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    },
+    addTransferItem() {
+      this.transferItems.push({ product_id: '', quantity: '' })
+    },
+    removeTransferItem(index) {
+      if (this.transferItems.length === 1) return
+      this.transferItems.splice(index, 1)
+    },
+    onTransferProductChange(index) {
+      const item = this.transferItems[index]
+      const product = this.getProductById(item.product_id)
+      if (product) {
+        item.quantity = 1
+      }
+    },
+    getProductById(id) {
+      return this.products.find(p => p.id === id)
+    },
+    getProductStock(productId) {
+      const product = this.getProductById(productId)
+      return product ? product.stock : 0
+    },
+    getProductWarehouseName(productId) {
+      const product = this.getProductById(productId)
+      if (!product) return ''
+      return this.getWarehouseName(product.warehouse_id)
+    },
+    getWarehouseName(warehouseId) {
+      if (!warehouseId) return 'Not assigned'
+      const warehouse = this.warehouses.find(w => w.id === warehouseId)
+      return warehouse ? warehouse.name : 'Unknown Warehouse'
+    },
+    getSupplierName() {
+      if (this.restockDetails.supplier_id === 'others') {
+        return this.restockDetails.custom_supplier || 'Custom Supplier'
+      }
+      const supplier = this.suppliers.find(s => s.id === this.restockDetails.supplier_id)
+      return supplier ? supplier.name : 'Unknown Supplier'
+    },
+    formatTransferType(type) {
+      const types = {
+        'warehouse': 'Warehouse Transfer',
+        'supplier_return': 'Supplier Return',
+        'write_off': 'Write Off',
+        'adjustment_out': 'Adjustment Out'
+      }
+      return types[type] || type
+    },
+    formatDateTime(dateString) {
+      if (!dateString) return 'N/A'
+      const date = new Date(dateString)
+      return date.toLocaleString()
     }
   },
   mounted() {
     this.fetchInventory()
+    this.fetchWarehouses()
+    this.fetchSuppliers()
+    this.fetchCurrentUser()
   }
 }
 </script>
@@ -1791,5 +2459,362 @@ export default {
   .data-table td {
     padding: 0.75rem 0.5rem;
   }
+}
+
+/* Stock Transfer Styles */
+.action-btn.transfer {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.action-btn.transfer:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.control-btn.info {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.control-btn.info:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+}
+
+.transfer-modal,
+.history-modal {
+  max-width: 700px;
+}
+
+.transfer-form .info-banner {
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  border-left: 4px solid #667eea;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.transfer-form .info-banner i {
+  color: #667eea;
+  font-size: 1.25rem;
+}
+
+.transfer-form .warehouse-info {
+  color: #718096;
+  font-weight: normal;
+  margin-left: 0.5rem;
+}
+
+.transfer-form .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.transfer-form label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.transfer-form label i {
+  color: #667eea;
+  font-size: 0.95rem;
+}
+
+.transfer-form .required {
+  color: #e53e3e;
+  font-weight: 700;
+}
+
+.transfer-form .recommended {
+  color: #805ad5;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.transfer-form .form-input,
+.transfer-form .form-select,
+.transfer-form .form-textarea,
+.transfer-form .disabled-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+}
+
+.transfer-form .form-input:focus,
+.transfer-form .form-select:focus,
+.transfer-form .form-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.transfer-form .disabled-input {
+  background: #f7fafc;
+  color: #718096;
+  cursor: not-allowed;
+}
+
+.transfer-form .helper-text {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: #718096;
+}
+
+.transfer-form .helper-text strong {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.tracking-info {
+  background: #f7fafc;
+  border: 2px dashed #cbd5e0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1.5rem;
+}
+
+.tracking-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.tracking-row:last-child {
+  margin-bottom: 0;
+}
+
+.tracking-row i {
+  color: #667eea;
+  width: 16px;
+}
+
+.tracking-row strong {
+  color: #2d3748;
+}
+
+/* Transfer History Styles */
+.history-table-container {
+  max-height: 500px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table thead {
+  position: sticky;
+  top: 0;
+  background: #f7fafc;
+  z-index: 10;
+}
+
+.history-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #2d3748;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.history-table td {
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.history-table tbody tr:hover {
+  background: #f7fafc;
+}
+
+.transfer-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.transfer-type-badge.warehouse {
+  background: #bee3f8;
+  color: #2c5282;
+}
+
+.transfer-type-badge.supplier_return {
+  background: #feebc8;
+  color: #7c2d12;
+}
+
+.transfer-type-badge.write_off {
+  background: #fed7d7;
+  color: #742a2a;
+}
+
+.transfer-type-badge.adjustment_out {
+  background: #e9d8fd;
+  color: #553c9a;
+}
+
+.external-target {
+  color: #d69e2e;
+  font-weight: 500;
+}
+
+.removed-badge {
+  color: #e53e3e;
+  font-weight: 500;
+}
+
+.reason-text {
+  display: inline-block;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Restock Modal Enhancements */
+.restock-modal {
+  max-width: 900px;
+}
+
+.form-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.form-section:last-child {
+  border-bottom: none;
+}
+
+.form-section h5 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #2d3748;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.form-section h5 i {
+  color: #667eea;
+}
+
+.required {
+  color: #e53e3e;
+  font-weight: bold;
+}
+
+.cost-breakdown {
+  background: #f7fafc;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+.cost-row.total {
+  border-top: 2px solid #cbd5e0;
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  font-size: 1.1rem;
+  color: #2d3748;
+}
+
+.cost-row label {
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.cost-row .inline-input {
+  width: 120px;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  text-align: right;
+  font-size: 0.9rem;
+}
+
+.cost-row .inline-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.summary-section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f7fafc;
+  border-radius: 8px;
+}
+
+.summary-section h5 {
+  color: #2d3748;
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-row.total {
+  border-top: 2px solid #cbd5e0;
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  font-size: 1.05rem;
+}
+
+.transfer-number {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
 }
 </style>

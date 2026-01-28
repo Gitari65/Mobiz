@@ -370,8 +370,28 @@ export const systemAPI = {
   }
 }
 
-// Export all APIs
-export default {
+// Create axios instance for direct API calls
+const axiosInstance = axios.create({
+  baseURL: BASE_URL,
+  headers: defaultHeaders
+})
+
+// Add interceptor to include auth token
+axiosInstance.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+}, (error) => {
+  return Promise.reject(error)
+})
+
+// Export axios instance as default, and named APIs for backward compatibility
+export default axiosInstance
+
+// Also export individual APIs for backward compatibility
+export const apis = {
   authAPI,
   userAPI,
   salesAPI,

@@ -11,7 +11,17 @@ return new class extends Migration {
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
-            $table->string('details')->nullable();
+            $table->string('category')->nullable();
+            $table->string('phone')->nullable();
+            $table->string('kra_pin')->nullable();
+            $table->string('address')->nullable();
+            $table->string('city')->nullable();
+            $table->string('county')->nullable();
+            $table->string('zip_code')->nullable();
+            $table->string('country')->nullable();
+            $table->string('owner_name')->nullable();
+            $table->string('owner_position')->nullable();
+            $table->boolean('approved')->default(false);
             $table->boolean('active')->default(false); // Pending by default
             $table->timestamps();
         });

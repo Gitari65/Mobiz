@@ -112,6 +112,12 @@
               <button class="action-btn edit-btn" @click="editProduct(product)" title="Edit Product">
                 <i class="fas fa-edit"></i>
               </button>
+              <button class="action-btn empties-btn" @click="showEmptiesModal(product)" title="Manage Empties">
+                <i class="fas fa-recycle"></i>
+              </button>
+              <button class="action-btn transfer-btn" @click="showTransferModal(product)" title="Transfer Stock">
+                <i class="fas fa-exchange-alt"></i>
+              </button>
               <button class="action-btn delete-btn" @click="confirmDelete(product)" title="Delete Product">
                 <i class="fas fa-trash-alt"></i>
               </button>
@@ -155,7 +161,7 @@
     </div>
 
     <!-- Multistep Add Products Modal -->
-    <div v-if="showAddModal && !editingProduct" class="modal-overlay" @click="closeModal">
+    <div v-if="showAddModal && !editingProduct" class="modal-overlay">
       <div class="multistep-modal" @click.stop>
         <!-- Progress Indicator -->
         <div class="step-progress">
@@ -297,21 +303,9 @@
                     </label>
                     <select class="form-input" v-model="singleProductForm.category">
                       <option value="">Select Category</option>
-                      <option value="fertilizers">Fertilizers</option>
-                      <option value="pesticides">Pesticides & Herbicides</option>
-                      <option value="seeds">Seeds & Seedlings</option>
-                      <option value="animal-feed">Animal Feed</option>
-                      <option value="veterinary-medicine">Veterinary Medicine</option>
-                      <option value="farm-tools">Farm Tools & Equipment</option>
-                      <option value="irrigation">Irrigation Supplies</option>
-                      <option value="dairy-supplies">Dairy Supplies</option>
-                      <option value="poultry-supplies">Poultry Supplies</option>
-                      <option value="livestock-care">Livestock Care</option>
-                      <option value="crop-protection">Crop Protection</option>
-                      <option value="soil-amendments">Soil Amendments</option>
-                      <option value="greenhouse-supplies">Greenhouse Supplies</option>
-                      <option value="other">Other</option>
-                      <option value="other">Other</option>
+                      <option v-for="category in categories" :key="category.id" :value="category.name">
+                        {{ category.name }}
+                      </option>
                     </select>
                   </div>
 
@@ -330,6 +324,41 @@
                 </div>
 
                 <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label">
+                      <i class="fas fa-warehouse"></i>
+                      Warehouse *
+                    </label>
+                    <select class="form-input" v-model="singleProductForm.warehouse_id" required>
+                      <option value="">Select Warehouse</option>
+                      <option 
+                        v-for="warehouse in warehouses" 
+                        :key="warehouse.id" 
+                        :value="warehouse.id"
+                      >
+                        {{ warehouse.name }}
+                        <template v-if="!warehouse.company_id"> (System Default)</template>
+                      </option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">
+                      <i class="fas fa-scale-balanced"></i>
+                      Unit of Measurement
+                    </label>
+                    <select class="form-input" v-model="singleProductForm.uom_id">
+                      <option value="">Select UOM</option>
+                      <option 
+                        v-for="uom in uoms" 
+                        :key="uom.id" 
+                        :value="uom.id"
+                      >
+                        {{ uom.name }} ({{ uom.abbreviation }})
+                      </option>
+                    </select>
+                  </div>
+
                   <div class="form-group">
                     <label class="form-label">
                       <i class="fas fa-money-bill-wave"></i>
@@ -404,6 +433,92 @@
                     rows="3"
                   ></textarea>
                 </div>
+
+                <!-- Empties/Returnables Section -->
+                <div class="empties-section">
+                  <h3 class="empties-header">
+                    <i class="fas fa-recycle"></i>
+                    Returnables/Empties (Optional)
+                  </h3>
+                  <p class="empties-subtitle">Link returnable containers that come with this product</p>
+                  
+                  <div v-if="singleProductForm.empties.length > 0" class="linked-empties">
+                    <div v-for="(empty, idx) in singleProductForm.empties" :key="idx" class="empty-item">
+                      <div class="empty-info">
+                        <strong>{{ getProductNameById(empty.empty_product_id) }}</strong>
+                        <span class="empty-details">Qty: {{ empty.quantity }} | Deposit: Ksh {{ empty.deposit_amount }}</span>
+                      </div>
+                      <button type="button" @click="removeEmptyFromForm(idx)" class="remove-empty-btn">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="add-empty-form">
+                    <div class="empty-inputs">
+                      <select v-model="tempEmpty.empty_product_id" class="form-input">
+                        <option value="">Select returnable product</option>
+                        <option v-for="product in products.filter(p => p.id !== editingProduct?.id)" :key="product.id" :value="product.id">
+                          {{ product.name }}
+                        </option>
+                      </select>
+                      <input 
+                        type="number" 
+                        v-model.number="tempEmpty.quantity" 
+                        class="form-input" 
+                        placeholder="Qty"
+                        min="1"
+                      />
+                      <input 
+                        type="number" 
+                        v-model.number="tempEmpty.deposit_amount" 
+                        class="form-input" 
+                        placeholder="Deposit (Ksh)"
+                        min="0"
+                        step="0.01"
+                      />
+                      <button 
+                        type="button" 
+                        @click="addEmptyToForm" 
+                        class="add-empty-btn"
+                        :disabled="!tempEmpty.empty_product_id"
+                      >
+                        <i class="fas fa-plus"></i> Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Price Group Pricing Section -->
+                <div v-if="priceGroups.length > 0" class="pricing-section">
+                  <h3 class="pricing-header">
+                    <i class="fas fa-tag"></i>
+                    Price Group Pricing
+                  </h3>
+                  <p class="pricing-subtitle">Set custom prices for different customer tiers (optional)</p>
+                  
+                  <div class="price-group-inputs">
+                    <div v-for="group in priceGroups" :key="group.id" class="price-group-input">
+                      <label class="form-label">
+                        {{ group.name }}
+                        <span class="discount-label" v-if="group.discount_percentage > 0">
+                          ({{ group.discount_percentage }}% off base)
+                        </span>
+                      </label>
+                      <div class="price-input-wrapper">
+                        <span class="currency">Ksh</span>
+                        <input 
+                          type="number" 
+                          class="form-input price-input" 
+                          v-model="singleProductForm.prices[group.id]" 
+                          :placeholder="`Price for ${group.name}`"
+                          step="0.01"
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </form>
             </div>
 
@@ -448,20 +563,29 @@
                       <label class="form-label">Category</label>
                       <select class="form-input" v-model="product.category">
                         <option value="">Select Category</option>
-                        <option value="fertilizers">Fertilizers</option>
-                        <option value="pesticides">Pesticides & Herbicides</option>
-                        <option value="seeds">Seeds & Seedlings</option>
-                        <option value="animal-feed">Animal Feed</option>
-                        <option value="veterinary-medicine">Veterinary Medicine</option>
-                        <option value="farm-tools">Farm Tools & Equipment</option>
-                        <option value="irrigation">Irrigation Supplies</option>
-                        <option value="dairy-supplies">Dairy Supplies</option>
-                        <option value="poultry-supplies">Poultry Supplies</option>
-                        <option value="livestock-care">Livestock Care</option>
-                        <option value="crop-protection">Crop Protection</option>
-                        <option value="soil-amendments">Soil Amendments</option>
-                        <option value="greenhouse-supplies">Greenhouse Supplies</option>
-                        <option value="other">Other</option>
+                        <option v-for="category in categories" :key="category.id" :value="category.name">
+                          {{ category.name }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label">Warehouse *</label>
+                      <select class="form-input" v-model="product.warehouse_id" required>
+                        <option value="">Select Warehouse</option>
+                        <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">
+                          {{ warehouse.name }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label">Unit of Measurement</label>
+                      <select class="form-input" v-model="product.uom_id">
+                        <option value="">Select UOM</option>
+                        <option v-for="uom in uoms" :key="uom.id" :value="uom.id">
+                          {{ uom.name }} ({{ uom.abbreviation }})
+                        </option>
                       </select>
                     </div>
                   </div>
@@ -501,6 +625,37 @@
                         min="0"
                         required 
                       />
+                    </div>
+                  </div>
+
+                  <!-- Price Group Pricing Section for Bulk Products -->
+                  <div v-if="priceGroups.length > 0" class="pricing-section-bulk">
+                    <h4 class="pricing-header-bulk">
+                      <i class="fas fa-tag"></i>
+                      Price Group Pricing
+                    </h4>
+                    <p class="pricing-subtitle-bulk">Set custom prices for different customer tiers (optional)</p>
+                    
+                    <div class="price-group-inputs-bulk">
+                      <div v-for="group in priceGroups" :key="group.id" class="price-group-input-bulk">
+                        <label class="form-label-bulk">
+                          {{ group.name }}
+                          <span class="discount-label" v-if="group.discount_percentage > 0">
+                            ({{ group.discount_percentage }}% off)
+                          </span>
+                        </label>
+                        <div class="price-input-wrapper-bulk">
+                          <span class="currency">Ksh</span>
+                          <input 
+                            type="number" 
+                            class="form-input price-input" 
+                            v-model="product.prices[group.id]" 
+                            :placeholder="`Price for ${group.name}`"
+                            step="0.01"
+                            min="0"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -554,16 +709,16 @@
                 </div>
 
                 <div class="csv-template">
-                  <h5>CSV Template Format</h5>
+                  <h5>Excel Template with Dropdowns</h5>
                   <div class="template-example">
-                    <code>name,category,cost_price,price,stock_quantity,description</code>
-                    <code>DAP Fertilizer 50kg,fertilizers,2800.00,3500.00,50,Di-ammonium phosphate fertilizer for crop growth</code>
-                    <code>Roundup Herbicide 1L,pesticides,1200.00,1800.00,30,Glyphosate-based weed killer</code>
-                    <code>Maize Hybrid Seeds,seeds,800.00,1200.00,100,High-yield drought resistant maize variety</code>
+                    <code>name,category,warehouse,cost_price,price,stock_quantity,description</code>
+                    <code v-if="categories.length > 0 && warehouses.length > 0">
+                      Sample Product,{{ categories[0]?.name || 'Category' }},{{ warehouses[0]?.name || 'Warehouse' }},2800.00,3500.00,50,Product description
+                    </code>
                   </div>
-                  <button type="button" class="download-template-btn">
+                  <button type="button" class="download-template-btn" @click="downloadCSVTemplate">
                     <i class="fas fa-download"></i>
-                    Download Template
+                    Download Excel Template (with dropdowns)
                   </button>
                 </div>
               </div>
@@ -662,7 +817,7 @@
             >
               <div v-if="saving" class="btn-loading">
                 <div class="btn-spinner"></div>
-                Saving...
+                <span>Saving {{ getProductsToReview().length }} product{{ getProductsToReview().length !== 1 ? 's' : '' }}...</span>
               </div>
               <div v-else>
                 <i class="fas fa-check"></i>
@@ -675,7 +830,7 @@
     </div>
 
     <!-- Single Product Edit Modal -->
-    <div v-if="editingProduct" class="modal-overlay" @click="closeModal">
+    <div v-if="editingProduct" class="modal-overlay">
       <div class="modern-modal" @click.stop>
         <form @submit.prevent="saveProduct">
           <!-- Modal Header -->
@@ -741,6 +896,24 @@
                 />
               </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-warehouse"></i>
+                Warehouse
+              </label>
+              <select class="form-input" v-model="form.warehouse_id">
+                <option value="">Select Warehouse</option>
+                <option 
+                  v-for="warehouse in warehouses" 
+                  :key="warehouse.id" 
+                  :value="warehouse.id"
+                >
+                  {{ warehouse.name }}
+                  <template v-if="!warehouse.company_id"> (System Default)</template>
+                </option>
+              </select>
+            </div>
           </div>
 
           <!-- Modal Footer -->
@@ -765,7 +938,7 @@
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="deletingProduct" class="modal-overlay" @click="deletingProduct = null">
+    <div v-if="deletingProduct" class="modal-overlay">
       <div class="modern-modal delete-modal" @click.stop>
         <div class="modal-header delete-header">
           <div class="modal-title-section">
@@ -797,13 +970,186 @@
         </div>
       </div>
     </div>
+
+    <!-- Stock Transfer Modal -->
+    <div v-if="transferringProduct" class="modal-overlay">
+      <div class="modern-modal transfer-modal" @click.stop>
+        <form @submit.prevent="transferStock">
+          <!-- Modal Header -->
+          <div class="modal-header">
+            <div class="modal-title-section">
+              <div class="modal-icon">
+                <i class="fas fa-exchange-alt"></i>
+              </div>
+              <div>
+                <h2 class="modal-title">Transfer Stock</h2>
+                <p class="modal-subtitle">{{ transferringProduct.name }}</p>
+              </div>
+            </div>
+            <button type="button" class="close-btn" @click="closeTransferModal">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-warehouse"></i>
+                From Warehouse
+              </label>
+              <input 
+                type="text" 
+                class="form-input" 
+                :value="getWarehouseName(transferringProduct.warehouse_id)"
+                disabled
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-arrows-alt-h"></i>
+                Transfer Type *
+              </label>
+              <select class="form-input" v-model="transferForm.destination_type" required>
+                <option value="">Select Transfer Type</option>
+                <option value="warehouse">Transfer to Another Warehouse</option>
+                <option value="supplier_return">Return to Supplier</option>
+                <option value="write_off">Write Off (Damage/Expiry)</option>
+                <option value="adjustment_out">Adjustment Out</option>
+              </select>
+            </div>
+
+            <div v-if="transferForm.destination_type === 'warehouse'" class="form-group">
+              <label class="form-label">
+                <i class="fas fa-warehouse"></i>
+                To Warehouse *
+              </label>
+              <select class="form-input" v-model="transferForm.to_warehouse_id" required>
+                <option value="">Select Destination Warehouse</option>
+                <option 
+                  v-for="warehouse in availableWarehouses" 
+                  :key="warehouse.id" 
+                  :value="warehouse.id"
+                >
+                  {{ warehouse.name }}
+                  <template v-if="!warehouse.company_id"> (System Default)</template>
+                </option>
+              </select>
+            </div>
+
+            <div v-if="transferForm.destination_type === 'supplier_return'" class="form-group">
+              <label class="form-label">
+                <i class="fas fa-truck"></i>
+                Supplier Name
+              </label>
+              <input 
+                type="text" 
+                class="form-input" 
+                v-model="transferForm.external_target"
+                placeholder="Enter supplier name"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-boxes"></i>
+                Quantity *
+              </label>
+              <input 
+                type="number" 
+                class="form-input" 
+                v-model="transferForm.quantity"
+                :max="transferringProduct.stock_quantity"
+                min="1"
+                placeholder="Enter quantity to transfer"
+                required
+              />
+              <small class="form-hint">Available: {{ transferringProduct.stock_quantity }}</small>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-info-circle"></i>
+                Reason
+              </label>
+              <input 
+                type="text" 
+                class="form-input" 
+                v-model="transferForm.reason"
+                placeholder="Enter reason for transfer (optional)"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-hashtag"></i>
+                Reference Number
+              </label>
+              <input 
+                type="text" 
+                class="form-input" 
+                v-model="transferForm.reference"
+                placeholder="Enter reference number (optional)"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <i class="fas fa-sticky-note"></i>
+                Notes
+              </label>
+              <textarea 
+                class="form-input" 
+                v-model="transferForm.note"
+                placeholder="Additional notes (optional)"
+                rows="3"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" @click="closeTransferModal">
+              <i class="fas fa-times"></i>
+              Cancel
+            </button>
+            <button type="submit" class="btn-primary" :disabled="saving">
+              <div v-if="saving" class="btn-loading">
+                <div class="btn-spinner"></div>
+                <span>Transferring...</span>
+              </div>
+              <div v-else>
+                <i class="fas fa-exchange-alt"></i>
+                <span>Transfer Stock</span>
+              </div>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
+
+  <!-- Empties Management Modal -->
+  <EmptiesModal
+    :isOpen="showEmptiesModalFlag"
+    :product="selectedProductForEmpties"
+    @close="closeEmptiesModal"
+    @success="handleEmptiesSuccess"
+    @error="handleEmptiesError"
+  />
 </template>
 
 <script>
 import axios from 'axios'
+import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
+import EmptiesModal from '../../components/EmptiesModal.vue'
 
 export default {
+  components: {
+    EmptiesModal
+  },
   data() {
     return {
       products: [],
@@ -823,7 +1169,8 @@ export default {
       form: {
         name: '',
         price: '',
-        stock_quantity: ''
+        stock_quantity: '',
+        warehouse_id: ''
       },
       // Multistep form data
       currentStep: 1,
@@ -843,22 +1190,58 @@ export default {
         cost_price: '',
         price: '',
         stock_quantity: '',
-        low_stock_threshold: 5
+        low_stock_threshold: 5,
+        warehouse_id: '',
+        uom_id: '',
+        prices: {},
+        empties: [] // Array of {empty_product_id, quantity, deposit_amount}
       },
       // Bulk products array
       bulkProducts: [
         {
           name: '',
           category: '',
+          warehouse_id: '',
+          uom_id: '',
           cost_price: '',
           price: '',
-          stock_quantity: ''
+          stock_quantity: '',
+          prices: {},
+          empties: []
         }
       ],
       // CSV import
       csvFile: null,
       isDragOver: false,
-      csvData: []
+      csvData: [],
+      // Warehouses
+      warehouses: [],
+      // UOMs
+      uoms: [],
+      // Categories
+      categories: [],
+      // Price Groups
+      priceGroups: [],
+      // Stock Transfer
+      transferringProduct: null,
+      transferForm: {
+        destination_type: '',
+        to_warehouse_id: '',
+        quantity: '',
+        reason: '',
+        reference: '',
+        external_target: '',
+        note: ''
+      },
+      // Empties Management
+      showEmptiesModalFlag: false,
+      selectedProductForEmpties: null,
+      // Temp empty for adding to new product
+      tempEmpty: {
+        empty_product_id: '',
+        quantity: 1,
+        deposit_amount: 0
+      }
     }
   },
   computed: {
@@ -873,10 +1256,19 @@ export default {
         product.price.toString().includes(query) ||
         product.stock_quantity.toString().includes(query)
       )
+    },
+    availableWarehouses() {
+      // Exclude the current product's warehouse from the destination options
+      if (!this.transferringProduct) return this.warehouses
+      return this.warehouses.filter(w => w.id !== this.transferringProduct.warehouse_id)
     }
   },
   mounted() {
     this.fetchProducts()
+    this.fetchWarehouses()
+    this.fetchUoms()
+    this.fetchCategories()
+    this.fetchPriceGroups()
   },
   methods: {
     async fetchProducts() {
@@ -892,6 +1284,43 @@ export default {
         console.error('Fetch products error:', err)
       } finally {
         this.loading = false
+      }
+    },
+
+    async fetchWarehouses() {
+      try {
+        const res = await axios.get('http://localhost:8000/warehouses')
+        this.warehouses = res.data
+      } catch (err) {
+        console.error('Error fetching warehouses:', err)
+      }
+    },
+
+    async fetchUoms() {
+      try {
+        const res = await axios.get('http://localhost:8000/uoms')
+        this.uoms = res.data
+      } catch (err) {
+        console.error('Error fetching UOMs:', err)
+      }
+    },
+
+    async fetchCategories() {
+      try {
+        const res = await axios.get('http://localhost:8000/product-categories')
+        this.categories = res.data
+      } catch (err) {
+        console.error('Error fetching categories:', err)
+      }
+    },
+
+    async fetchPriceGroups() {
+      try {
+        const res = await axios.get('/price-groups')
+        this.priceGroups = res.data || []
+      } catch (err) {
+        console.error('Error fetching price groups:', err)
+        this.priceGroups = []
       }
     },
     
@@ -972,19 +1401,32 @@ export default {
     },
     
     async saveProduct() {
+      if (this.saving) return
+      
       this.saving = true
+      this.showAlert('Saving product...', 'info')
+      
       try {
         if (this.editingProduct) {
           await axios.put(`http://localhost:8000/products/${this.editingProduct.id}`, this.form)
-          this.showAlert('Product updated successfully!', 'success')
+          this.showAlert('✓ Product updated successfully!', 'success')
         } else {
           await axios.post(`http://localhost:8000/products`, this.form)
-          this.showAlert('Product added successfully!', 'success')
+          this.showAlert('✓ Product added successfully!', 'success')
         }
+        
         await this.fetchProducts()
-        this.closeModal()
+        
+        // Close modal after brief delay to show success
+        setTimeout(() => {
+          this.closeModal()
+        }, 500)
+        
       } catch (err) {
-        this.showAlert('Failed to save product. Please try again.', 'error')
+        this.showAlert(
+          `✗ Failed to save product: ${err.response?.data?.error || err.message || 'Unknown error'}`, 
+          'error'
+        )
         console.error('Save product error:', err)
       } finally {
         this.saving = false
@@ -996,15 +1438,151 @@ export default {
     },
     
     async deleteProduct(id) {
+      this.showAlert('Deleting product...', 'info')
+      
       try {
         await axios.delete(`http://localhost:8000/products/${id}`)
-        this.showAlert('Product deleted successfully!', 'success')
+        this.showAlert('✓ Product deleted successfully!', 'success')
         await this.fetchProducts()
         this.deletingProduct = null
       } catch (err) {
-        this.showAlert('Failed to delete product. Please try again.', 'error')
+        this.showAlert(
+          `✗ Failed to delete product: ${err.response?.data?.error || err.message || 'Unknown error'}`, 
+          'error'
+        )
         console.error('Delete product error:', err)
+        this.deletingProduct = null
       }
+    },
+
+    // Stock Transfer Methods
+    showTransferModal(product) {
+      this.transferringProduct = product
+      this.transferForm = {
+        destination_type: '',
+        to_warehouse_id: '',
+        quantity: '',
+        reason: '',
+        reference: '',
+        external_target: '',
+        note: ''
+      }
+    },
+
+    closeTransferModal() {
+      this.transferringProduct = null
+      this.transferForm = {
+        destination_type: '',
+        to_warehouse_id: '',
+        quantity: '',
+        reason: '',
+        reference: '',
+        external_target: '',
+        note: ''
+      }
+    },
+
+    // Empties Management Methods
+    showEmptiesModal(product) {
+      this.selectedProductForEmpties = product
+      this.showEmptiesModalFlag = true
+    },
+
+    closeEmptiesModal() {
+      this.showEmptiesModalFlag = false
+      this.selectedProductForEmpties = null
+    },
+
+    handleEmptiesSuccess(message) {
+      this.showAlert(message || 'Operation successful', 'success')
+    },
+
+    handleEmptiesError(message) {
+      this.showAlert(message || 'Operation failed', 'error')
+    },
+
+    // Empties form management
+    addEmptyToForm() {
+      if (!this.tempEmpty.empty_product_id) return
+      
+      this.singleProductForm.empties.push({
+        empty_product_id: this.tempEmpty.empty_product_id,
+        quantity: this.tempEmpty.quantity || 1,
+        deposit_amount: this.tempEmpty.deposit_amount || 0
+      })
+      
+      // Reset temp form
+      this.tempEmpty = {
+        empty_product_id: '',
+        quantity: 1,
+        deposit_amount: 0
+      }
+    },
+
+    removeEmptyFromForm(index) {
+      this.singleProductForm.empties.splice(index, 1)
+    },
+
+    getProductNameById(productId) {
+      const product = this.products.find(p => p.id === productId)
+      return product ? product.name : 'Unknown'
+    },
+
+    async transferStock() {
+      if (this.saving) return
+      
+      this.saving = true
+      this.showAlert('Processing stock transfer...', 'info')
+      
+      try {
+        const payload = {
+          product_id: this.transferringProduct.id,
+          from_warehouse_id: this.transferringProduct.warehouse_id,
+          quantity: parseInt(this.transferForm.quantity),
+          destination_type: this.transferForm.destination_type,
+          reason: this.transferForm.reason,
+          reference: this.transferForm.reference,
+          note: this.transferForm.note
+        }
+
+        // Add to_warehouse_id only for warehouse transfers
+        if (this.transferForm.destination_type === 'warehouse') {
+          payload.to_warehouse_id = parseInt(this.transferForm.to_warehouse_id)
+        }
+
+        // Add external_target for supplier returns
+        if (this.transferForm.destination_type === 'supplier_return') {
+          payload.external_target = this.transferForm.external_target
+        }
+
+        const response = await axios.post('http://localhost:8000/products/transfer', payload)
+        
+        this.showAlert(
+          `✓ ${response.data.message || 'Stock transferred successfully!'}`, 
+          'success'
+        )
+        
+        await this.fetchProducts()
+        
+        // Close modal after brief delay
+        setTimeout(() => {
+          this.closeTransferModal()
+        }, 500)
+        
+      } catch (err) {
+        this.showAlert(
+          `✗ ${err.response?.data?.error || err.response?.data?.message || 'Failed to transfer stock'}`, 
+          'error'
+        )
+        console.error('Transfer stock error:', err)
+      } finally {
+        this.saving = false
+      }
+    },
+
+    getWarehouseName(warehouseId) {
+      const warehouse = this.warehouses.find(w => w.id === warehouseId)
+      return warehouse ? warehouse.name : 'Unknown Warehouse'
     },
     
     formatPrice(price) {
@@ -1042,10 +1620,10 @@ export default {
           return this.selectedMethod !== ''
         case 2:
           if (this.selectedMethod === 'single') {
-            return this.singleProductForm.name && this.singleProductForm.price && this.singleProductForm.stock_quantity
+            return this.singleProductForm.name && this.singleProductForm.price && this.singleProductForm.stock_quantity && this.singleProductForm.warehouse_id
           } else if (this.selectedMethod === 'bulk') {
             return this.bulkProducts.every(product => 
-              product.name && product.price && product.stock_quantity
+              product.name && product.price && product.stock_quantity && product.warehouse_id
             )
           } else if (this.selectedMethod === 'import') {
             return this.csvFile !== null
@@ -1061,9 +1639,12 @@ export default {
       this.bulkProducts.push({
         name: '',
         category: '',
+        warehouse_id: '',
+        uom_id: '',
         cost_price: '',
         price: '',
-        stock_quantity: ''
+        stock_quantity: '',
+        prices: {}
       })
     },
 
@@ -1074,6 +1655,116 @@ export default {
     },
 
     // CSV import methods
+    async downloadCSVTemplate() {
+      try {
+        // Create workbook using ExcelJS
+        const workbook = new ExcelJS.Workbook()
+        const worksheet = workbook.addWorksheet('Products')
+        
+        // Add headers
+        const headers = ['name', 'category', 'warehouse', 'cost_price', 'price', 'stock_quantity', 'low_stock_threshold', 'description']
+        worksheet.addRow(headers)
+        
+        // Style header row
+        worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } }
+        
+        // Add sample rows
+        const sampleRows = []
+        if (this.categories.length > 0 && this.warehouses.length > 0) {
+          sampleRows.push([
+            'Sample Product 1',
+            this.categories[0]?.name || 'Category1',
+            this.warehouses[0]?.name || 'Warehouse1',
+            '2800.00',
+            '3500.00',
+            '50',
+            '10',
+            'Product description 1'
+          ])
+          sampleRows.push([
+            'Sample Product 2',
+            this.categories[Math.min(1, this.categories.length - 1)]?.name || 'Category2',
+            this.warehouses[Math.min(1, this.warehouses.length - 1)]?.name || 'Warehouse2',
+            '1200.00',
+            '1800.00',
+            '30',
+            '5',
+            'Product description 2'
+          ])
+          sampleRows.push([
+            'Sample Product 3',
+            this.categories[Math.min(2, this.categories.length - 1)]?.name || 'Category3',
+            this.warehouses[0]?.name || 'Warehouse1',
+            '800.00',
+            '1200.00',
+            '100',
+            '20',
+            'Product description 3'
+          ])
+        } else {
+          sampleRows.push(['Sample Product', 'Category Name', 'Warehouse Name', '1000.00', '1500.00', '50', '10', 'Product description'])
+        }
+        
+        sampleRows.forEach(row => worksheet.addRow(row))
+        
+        // Set column widths
+        worksheet.columns = [
+          { header: 'name', width: 20 },
+          { header: 'category', width: 15 },
+          { header: 'warehouse', width: 15 },
+          { header: 'cost_price', width: 12 },
+          { header: 'price', width: 12 },
+          { header: 'stock_quantity', width: 15 },
+          { header: 'low_stock_threshold', width: 18 },
+          { header: 'description', width: 30 }
+        ]
+        
+        // Add data validation for category column (B2:B1000)
+        const categoryList = this.categories.map(c => c.name).join(',')
+        worksheet.dataValidations.add('B2:B1000', {
+          type: 'list',
+          allowBlank: false,
+          showInputMessage: true,
+          promptTitle: 'Category Selection',
+          prompt: 'Please select a category from the list',
+          showErrorMessage: true,
+          errorTitle: 'Invalid Category',
+          error: 'You must select a valid category from the dropdown list',
+          formulae: [`"${categoryList}"`]
+        })
+        
+        // Add data validation for warehouse column (C2:C1000)
+        const warehouseList = this.warehouses.map(w => w.name).join(',')
+        worksheet.dataValidations.add('C2:C1000', {
+          type: 'list',
+          allowBlank: false,
+          showInputMessage: true,
+          promptTitle: 'Warehouse Selection',
+          prompt: 'Please select a warehouse from the list',
+          showErrorMessage: true,
+          errorTitle: 'Invalid Warehouse',
+          error: 'You must select a valid warehouse from the dropdown list',
+          formulae: [`"${warehouseList}"`]
+        })
+        
+        // Write to buffer and download
+        const buffer = await workbook.xlsx.writeBuffer()
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `product_import_template_${new Date().toISOString().split('T')[0]}.xlsx`
+        link.click()
+        window.URL.revokeObjectURL(url)
+        
+        this.showAlert('Excel template with dropdowns downloaded successfully!', 'success')
+      } catch (error) {
+        console.error('Error generating Excel template:', error)
+        this.showAlert('Error generating Excel template. Please try again.', 'error')
+      }
+    },
+
     handleFileDrop(event) {
       this.isDragOver = false
       const files = event.dataTransfer.files
@@ -1090,12 +1781,52 @@ export default {
     },
 
     handleFile(file) {
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+      const isCSV = file.type === 'text/csv' || file.name.endsWith('.csv')
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.type.includes('spreadsheet')
+      
+      if (isCSV) {
         this.csvFile = file
         this.parseCSV(file)
+      } else if (isExcel) {
+        this.csvFile = file
+        this.parseExcel(file)
       } else {
-        this.showAlert('Please select a valid CSV file', 'error')
+        this.showAlert('Please select a valid CSV or Excel file', 'error')
       }
+    },
+
+    parseExcel(file) {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const workbook = new ExcelJS.Workbook()
+          await workbook.xlsx.load(e.target.result)
+          const worksheet = workbook.worksheets[0]
+          
+          this.csvData = []
+          worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return // Skip header row
+            
+            const product = {}
+            const headers = ['name', 'category', 'warehouse', 'cost_price', 'price', 'stock_quantity', 'low_stock_threshold', 'description']
+            row.values.forEach((value, colIndex) => {
+              if (colIndex > 0 && headers[colIndex - 1]) {
+                product[headers[colIndex - 1]] = value || ''
+              }
+            })
+            
+            if (Object.keys(product).length > 0 && product.name) {
+              this.csvData.push(product)
+            }
+          })
+          
+          this.showAlert(`Successfully loaded ${this.csvData.length} products from Excel file`, 'success')
+        } catch (error) {
+          console.error('Error parsing Excel file:', error)
+          this.showAlert('Error parsing Excel file. Please ensure it has the correct format.', 'error')
+        }
+      }
+      reader.readAsArrayBuffer(file)
     },
 
     parseCSV(file) {
@@ -1156,11 +1887,26 @@ export default {
 
     // Save all products
     async saveAllProducts() {
+      if (this.saving) return
+      
       this.saving = true
       const products = this.getProductsToReview()
       
+      // Show initial progress alert
+      this.showAlert(`Saving ${products.length} product${products.length !== 1 ? 's' : ''}...`, 'info')
+      
       try {
+        // First, save all products
         const promises = products.map(product => {
+          // Find warehouse ID by name if warehouse is provided (for CSV/Excel imports)
+          let warehouseId = product.warehouse_id || null
+          if (!warehouseId && product.warehouse) {
+            const warehouse = this.warehouses.find(w => 
+              w.name.toLowerCase() === product.warehouse.toLowerCase()
+            )
+            warehouseId = warehouse?.id || null
+          }
+          
           // Clean up the product data
           const cleanProduct = {
             name: product.name,
@@ -1171,19 +1917,68 @@ export default {
             description: product.description || null,
             cost_price: parseFloat(product.cost_price) || null,
             sku: product.sku || null,
-            low_stock_threshold: parseInt(product.low_stock_threshold) || 5
+            low_stock_threshold: parseInt(product.low_stock_threshold) || 5,
+            warehouse_id: warehouseId ? parseInt(warehouseId) : null,
+            uom_id: product.uom_id ? parseInt(product.uom_id) : null,
+            prices: product.prices || {}
           }
           
-          return axios.post('http://localhost:8000/products', cleanProduct)
+          return axios.post('http://localhost:8000/api/products', cleanProduct)
+            .then(response => ({
+              response,
+              empties: product.empties || []
+            }))
         })
 
-        await Promise.all(promises)
+        const results = await Promise.all(promises)
+                // Link empties for products that have them
+                const emptiesPromises = []
+                for (const result of results) {
+                  // API returns { product: {...} }
+                  const created = result.response.data?.product || result.response.data
+                  const productId = created?.id
+                  const empties = result.empties
+          
+                  if (empties && empties.length > 0) {
+                    for (const empty of empties) {
+                      if (!productId) continue
+                      emptiesPromises.push(
+                        axios.post(`http://localhost:8000/api/products/${productId}/empties`, {
+                          empty_product_id: empty.empty_product_id,
+                          quantity: empty.quantity,
+                          deposit_amount: empty.deposit_amount
+                        }).catch(err => {
+                          console.error('Failed to link empty:', err)
+                        })
+                      )
+                    }
+                  }
+                }
         
-        this.showAlert(`Successfully added ${products.length} product${products.length !== 1 ? 's' : ''}!`, 'success')
+                if (emptiesPromises.length > 0) {
+                  await Promise.all(emptiesPromises)
+                }
+        
+        
+        // Show success alert with details
+        this.showAlert(
+          `✓ Successfully added ${products.length} product${products.length !== 1 ? 's' : ''} to inventory!`, 
+          'success'
+        )
+        
+        // Refresh product list
         await this.fetchProducts()
-        this.closeModal()
+        
+        // Close modal after brief delay to show success
+        setTimeout(() => {
+          this.closeModal()
+        }, 500)
+        
       } catch (err) {
-        this.showAlert('Failed to save some products. Please try again.', 'error')
+        this.showAlert(
+          `✗ Failed to save products: ${err.response?.data?.error || err.message || 'Unknown error'}`, 
+          'error'
+        )
         console.error('Save products error:', err)
       } finally {
         this.saving = false
@@ -1203,14 +1998,27 @@ export default {
         cost_price: '',
         price: '',
         stock_quantity: '',
-        low_stock_threshold: 5
+        low_stock_threshold: 5,
+        warehouse_id: '',
+        uom_id: '',
+        prices: {},
+        empties: []
+      }
+      this.tempEmpty = {
+        empty_product_id: '',
+        quantity: 1,
+        deposit_amount: 0
       }
       this.bulkProducts = [{
         name: '',
         category: '',
+        warehouse_id: '',
+        uom_id: '',
         cost_price: '',
         price: '',
-        stock_quantity: ''
+        stock_quantity: '',
+        prices: {},
+        empties: []
       }]
       this.csvFile = null
       this.csvData = []
@@ -1730,6 +2538,28 @@ export default {
 
 .edit-btn:hover {
   background: #3182ce;
+  color: white;
+  transform: translateY(-2px);
+}
+
+.empties-btn {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.empties-btn:hover {
+  background: #10b981;
+  color: white;
+  transform: translateY(-2px);
+}
+
+.transfer-btn {
+  background: rgba(128, 90, 213, 0.1);
+  color: #805ad5;
+}
+
+.transfer-btn:hover {
+  background: #805ad5;
   color: white;
   transform: translateY(-2px);
 }
@@ -2700,6 +3530,299 @@ export default {
   .footer-right {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* Transfer Modal Styles */
+.transfer-modal {
+  max-width: 600px;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: #718096;
+  font-style: italic;
+}
+
+/* Empties/Returnables Section */
+.empties-section {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px dashed #cbd5e0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.empties-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem 0;
+  color: #2d3748;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.empties-header i {
+  color: #10b981;
+}
+
+.empties-subtitle {
+  margin: 0 0 0.75rem 0;
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+.linked-empties {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.empty-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.empty-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: #2d3748;
+}
+
+.empty-details {
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+.remove-empty-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.remove-empty-btn:hover {
+  background: #fecaca;
+}
+
+.add-empty-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.empty-inputs {
+  display: grid;
+  grid-template-columns: 2fr 0.8fr 0.8fr auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.add-empty-btn {
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-empty-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-empty-btn:hover:not(:disabled) {
+  background: #0ea371;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 900px) {
+  .empty-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Price Group Pricing Section */
+.pricing-section {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 2px solid #e2e8f0;
+}
+
+.pricing-header {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2d3748;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.pricing-header i {
+  color: #667eea;
+}
+
+.pricing-subtitle {
+  color: #718096;
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem 0;
+}
+
+.price-group-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.price-group-input {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem;
+  transition: all 0.3s ease;
+}
+
+.price-group-input:hover {
+  border-color: #cbd5e0;
+  background: #edf2f7;
+}
+
+.price-group-input .form-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  color: #2d3748;
+  font-weight: 600;
+}
+
+.discount-label {
+  font-size: 0.8rem;
+  color: #718096;
+  font-weight: 500;
+  background: #e6fffa;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.price-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.price-input-wrapper .currency {
+  position: absolute;
+  left: 12px;
+  color: #a0aec0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.price-input {
+  padding-left: 2.5rem !important;
+}
+
+/* Bulk Product Pricing Section */
+.pricing-section-bulk {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #cbd5e0;
+}
+
+.pricing-header-bulk {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2d3748;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.pricing-header-bulk i {
+  color: #667eea;
+  font-size: 0.85rem;
+}
+
+.pricing-subtitle-bulk {
+  color: #718096;
+  font-size: 0.85rem;
+  margin: 0 0 1rem 0;
+}
+
+.price-group-inputs-bulk {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.price-group-input-bulk {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.price-group-input-bulk:hover {
+  border-color: #cbd5e0;
+  background: #edf2f7;
+}
+
+.form-label-bulk {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  color: #2d3748;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.price-input-wrapper-bulk {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.price-input-wrapper-bulk .currency {
+  position: absolute;
+  left: 10px;
+  color: #a0aec0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .price-group-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .price-group-inputs-bulk {
+    grid-template-columns: 1fr;
   }
 }
 </style>

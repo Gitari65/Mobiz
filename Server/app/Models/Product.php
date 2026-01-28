@@ -18,7 +18,12 @@ class Product extends Model
         'price',
         'cost_price',
         'stock_quantity',
-        'low_stock_threshold'
+        'low_stock_threshold',
+        'company_id',
+        'warehouse_id',
+        'uom_id',
+        'created_by',
+        'updated_by'
     ];
 
     protected $casts = [
@@ -84,6 +89,52 @@ class Product extends Model
         return $this->hasMany(PurchaseItem::class);
     }
 
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function warehouse()
+    {
+        return $this->belongsTo(Warehouse::class);
+    }
+
+    public function uom()
+    {
+        return $this->belongsTo(UOM::class);
+    }
+
+    public function prices()
+    {
+        return $this->hasMany(ProductPrice::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function editor()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    // Empties/Returnables Relationships
+    public function empties()
+    {
+        return $this->belongsToMany(Product::class, 'product_empties', 'product_id', 'empty_product_id')
+            ->withPivot('quantity', 'deposit_amount', 'is_active')
+            ->withTimestamps()
+            ->where('product_empties.is_active', true);
+    }
+
+    public function parentProducts()
+    {
+        return $this->belongsToMany(Product::class, 'product_empties', 'empty_product_id', 'product_id')
+            ->withPivot('quantity', 'deposit_amount', 'is_active')
+            ->withTimestamps();
+    }
+
     // Helper Methods
     public function updateStock($quantity, $operation = 'subtract')
     {
@@ -106,5 +157,42 @@ class Product extends Model
             $this->save();
         }
         return $this->sku;
+    }
+
+    /**
+     * Get the price for a specific price group
+     * If custom price exists for the group, use it; otherwise calculate from base price with group discount
+     */
+    public function getPriceForGroup($priceGroupId)
+    {
+        // Check if there's a custom price for this group
+        $customPrice = $this->prices()
+            ->where('price_group_id', $priceGroupId)
+            ->first();
+
+        if ($customPrice) {
+            return $customPrice->price;
+        }
+
+        // If no custom price, calculate from base price using group discount
+        $priceGroup = PriceGroup::find($priceGroupId);
+        if ($priceGroup && $priceGroup->discount_percentage > 0) {
+            return $this->price * (1 - $priceGroup->discount_percentage / 100);
+        }
+
+        // Default to base price
+        return $this->price;
+    }
+
+    /**
+     * Get the price for a customer (convenience method)
+     */
+    public function getPriceForCustomer($customer)
+    {
+        if (!$customer || !$customer->price_group_id) {
+            return $this->price;
+        }
+
+        return $this->getPriceForGroup($customer->price_group_id);
     }
 }

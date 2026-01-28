@@ -32,16 +32,16 @@
             <div class="input-wrapper">
               <i class="fas fa-envelope input-icon"></i>
               <input
-                id="email"
-                type="email"
                 v-model="loginForm.email"
+                type="email"
                 class="form-input"
-                :class="{ error: errors.email, filled: loginForm.email, active: loginForm.email }"
-                placeholder=""
                 required
+                :class="{ filled: loginForm.email }"
+                placeholder=" "
+                autocomplete="email"
               />
-              <label for="email" class="floating-label">Email Address</label>
-              <div class="input-line"></div>
+              <span class="floating-label" :class="{ floating: loginForm.email }">Email</span>
+              <span class="input-line"></span>
             </div>
             <transition name="error-slide">
               <span v-if="errors.email" class="error-text">
@@ -55,15 +55,16 @@
             <div class="input-wrapper">
               <i class="fas fa-lock input-icon"></i>
               <input
-                id="password"
-                :type="showPassword ? 'text' : 'password'"
                 v-model="loginForm.password"
+                :type="showPassword ? 'text' : 'password'"
                 class="form-input"
-                :class="{ error: errors.password, filled: loginForm.password, active: loginForm.password }"
-                placeholder=""
                 required
+                :class="{ filled: loginForm.password }"
+                placeholder=" "
+                autocomplete="current-password"
               />
-              <label for="password" class="floating-label">Password</label>
+              <span class="floating-label" :class="{ floating: loginForm.password }">Password</span>
+              <span class="input-line"></span>
               <button
                 type="button"
                 class="password-toggle"
@@ -71,7 +72,6 @@
               >
                 <i :class="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
               </button>
-              <div class="input-line"></div>
             </div>
             <transition name="error-slide">
               <span v-if="errors.password" class="error-text">
@@ -93,7 +93,7 @@
               </div>
               <span class="checkbox-text">Remember me</span>
             </label>
-            <a href="#" class="forgot-link">Forgot Password?</a>
+            <a href="#" @click.prevent="openForgotPasswordModal" class="forgot-link">Forgot Password?</a>
           </div>
 
           <button
@@ -157,6 +157,150 @@
         <p>Mobiz POS v2.1.0 | Secure Business Management</p>
       </div>
     </div>
+
+    <!-- OTP Modal -->
+    <transition name="fade">
+      <div v-if="otpStep.active" class="otp-backdrop">
+        <div class="otp-modal">
+          <h2>Enter OTP</h2>
+          <p class="otp-hint">We sent a verification code to {{ otpStep.destination }}.</p>
+          <input
+            v-model="otpStep.code"
+            type="text"
+            inputmode="numeric"
+            maxlength="10"
+            class="otp-input"
+            placeholder="Enter code"
+          />
+          <p v-if="otpStep.error" class="otp-error">{{ otpStep.error }}</p>
+          <div class="otp-actions">
+            <button class="otp-button" :disabled="otpStep.isVerifying" @click="verifyOtp">
+              {{ otpStep.isVerifying ? 'Verifying...' : 'Verify' }}
+            </button>
+          </div>
+          <div class="otp-footer">
+            <p class="otp-expiry">Code expires in about {{ Math.ceil(otpStep.expiresIn / 60) }} minutes.</p>
+            <p v-if="otpStep.remainingAttempts > 0" class="otp-resend-info">
+              Didn't receive it? 
+              <button 
+                @click="resendOtp" 
+                :disabled="otpStep.isResending || otpStep.remainingAttempts <= 0"
+                class="otp-resend-btn"
+              >
+                {{ otpStep.isResending ? 'Resending...' : 'Resend' }}
+              </button>
+              ({{ otpStep.remainingAttempts }} attempt{{ otpStep.remainingAttempts !== 1 ? 's' : '' }} left)
+            </p>
+            <p v-else class="otp-limit-reached">
+              Resend limit reached. Please contact support to reset.
+            </p>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Forgot Password Modal -->
+    <transition name="fade">
+      <div v-if="forgotPasswordModal.active" class="forgot-backdrop" @click.self="closeForgotPasswordModal">
+        <div class="forgot-modal">
+          <button @click="closeForgotPasswordModal" class="forgot-close">
+            <i class="fas fa-times"></i>
+          </button>
+
+          <!-- Step 1: Request Reset -->
+          <div v-if="forgotPasswordModal.step === 'request'">
+            <h2>Reset Your Password</h2>
+            <p class="forgot-description">Enter your email address and we'll send you a reset code.</p>
+
+            <div class="form-group">
+              <label>Email Address</label>
+              <input
+                v-model="forgotPasswordModal.email"
+                type="email"
+                placeholder="your@email.com"
+                class="forgot-input"
+              />
+            </div>
+
+            <p v-if="forgotPasswordModal.error" class="error-text">{{ forgotPasswordModal.error }}</p>
+
+            <button 
+              @click="requestPasswordReset" 
+              :disabled="forgotPasswordModal.loading || !forgotPasswordModal.email"
+              class="forgot-button primary"
+            >
+              <span v-if="forgotPasswordModal.loading" class="btn-spinner"></span>
+              {{ forgotPasswordModal.loading ? 'Sending...' : 'Send Reset Code' }}
+            </button>
+
+            <p class="forgot-footer">
+              Remember your password? <a href="#" @click.prevent="closeForgotPasswordModal" class="back-link">Back to Login</a>
+            </p>
+          </div>
+
+          <!-- Step 2: Verify & Reset -->
+          <div v-if="forgotPasswordModal.step === 'verify'">
+            <h2>Create New Password</h2>
+            <p class="forgot-description">We sent a reset code to <strong>{{ forgotPasswordModal.destination }}</strong></p>
+
+            <div class="form-group">
+              <label>Reset Code</label>
+              <input
+                v-model="forgotPasswordModal.code"
+                type="text"
+                placeholder="Enter 6-digit code"
+                maxlength="6"
+                class="forgot-input"
+              />
+            </div>
+
+            <div class="form-group">
+              <label>New Password</label>
+              <div class="password-wrapper">
+                <input
+                  v-model="forgotPasswordModal.password"
+                  :type="forgotPasswordModal.showPassword ? 'text' : 'password'"
+                  placeholder="At least 8 characters"
+                  class="forgot-input"
+                />
+                <button
+                  @click="forgotPasswordModal.showPassword = !forgotPasswordModal.showPassword"
+                  type="button"
+                  class="password-toggle"
+                >
+                  <i :class="forgotPasswordModal.showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Confirm Password</label>
+              <input
+                v-model="forgotPasswordModal.passwordConfirm"
+                type="password"
+                placeholder="Confirm password"
+                class="forgot-input"
+              />
+            </div>
+
+            <p v-if="forgotPasswordModal.error" class="error-text">{{ forgotPasswordModal.error }}</p>
+
+            <button 
+              @click="resetPassword" 
+              :disabled="forgotPasswordModal.loading || !forgotPasswordModal.code || !forgotPasswordModal.password"
+              class="forgot-button primary"
+            >
+              <span v-if="forgotPasswordModal.loading" class="btn-spinner"></span>
+              {{ forgotPasswordModal.loading ? 'Resetting...' : 'Reset Password' }}
+            </button>
+
+            <p class="forgot-footer">
+              <a href="#" @click.prevent="resetForgotModal" class="back-link">Send another code?</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -173,6 +317,38 @@ const router = useRouter()
 // Reactive state
 const isLoading = ref(false)
 const showPassword = ref(false)
+
+const forgotPasswordModal = reactive({
+  active: false,
+  step: 'request', // 'request' | 'verify'
+  email: '',
+  code: '',
+  password: '',
+  passwordConfirm: '',
+  loading: false,
+  error: '',
+  destination: '',
+  showPassword: false
+})
+
+const otpStep = reactive({
+  active: false,
+  email: '',
+  destination: '',
+  expiresIn: 600,
+  code: '',
+  error: '',
+  isVerifying: false,
+  resendCount: 0,
+  remainingAttempts: 3,
+  isResending: false
+})
+
+const pendingSession = reactive({
+  userData: null,
+  role: '',
+  redirectPath: '/'
+})
 
 const loginForm = reactive({
   email: '',
@@ -328,35 +504,7 @@ const handleLogin = async () => {
     }
 
     if (res.ok && data.user) {
-      showAlert('success', 'Login successful!', 'Redirecting to your dashboard...')
-      const token = data.token || data.plainTextToken || ''
-      if (token) {
-        localStorage.setItem('authToken', token)
-        // set axios header for immediate use
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      } else {
-        // fallback if API didn't return token
-        localStorage.setItem('authToken', 'local-fallback-token')
-      }
-
-      localStorage.setItem('isLoggedIn', 'true')
-      localStorage.setItem('userData', JSON.stringify(data.user))
-
-      if (loginForm.rememberMe) {
-        localStorage.setItem('rememberMe', 'true')
-        localStorage.setItem('rememberedUser', loginForm.email)
-      } else {
-        localStorage.removeItem('rememberMe')
-        localStorage.removeItem('rememberedUser')
-      }
-
-      const role = data.role || (data.user?.role?.name || '')
-      const redirectPath = getRoleBasedRedirect(role)
-      
-      setTimeout(() => {
-        router.replace(redirectPath)
-        console.log('Redirected to', redirectPath, 'for role', role)
-      }, 1500)
+      startOtpFlow(data)
     } else {
       // Handle specific error scenarios
       if (res.status === 401) {
@@ -393,6 +541,278 @@ const handleLogin = async () => {
     )
   } finally {
     isLoading.value = false
+  }
+}
+
+const startOtpFlow = (data) => {
+  const role = data.role || (data.user?.role?.name || '')
+  pendingSession.userData = {
+    id: data.user.id,
+    name: data.user.name,
+    email: data.user.email,
+    company_id: data.user.company_id,
+    role_id: data.user.role_id,
+    verified: data.user.verified,
+    must_change_password: data.user.must_change_password,
+    role: data.user.role,
+    company: data.user.company
+  }
+  pendingSession.role = role
+  pendingSession.redirectPath = getRoleBasedRedirect(role)
+
+  otpStep.active = true
+  otpStep.email = data.user.email
+  otpStep.destination = data?.otp?.destination || 'your email'
+  otpStep.expiresIn = data?.otp?.expires_in || 600
+  otpStep.code = ''
+  otpStep.error = ''
+  otpStep.resendCount = 0
+  otpStep.remainingAttempts = 3
+
+  const otpMessage = data?.otp?.sent
+    ? `An OTP has been sent to ${otpStep.destination}.`
+    : 'Enter the OTP to continue.'
+
+  showAlert('success', 'Login successful!', otpMessage)
+}
+
+const verifyOtp = async () => {
+  if (!otpStep.code.trim()) {
+    otpStep.error = 'Please enter the code sent to your email.'
+    return
+  }
+
+  otpStep.isVerifying = true
+  otpStep.error = ''
+
+  try {
+    const res = await fetch('http://localhost:8000/login/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: otpStep.email,
+        code: otpStep.code.trim()
+      })
+    })
+
+    let data = null
+    try {
+      data = await res.json()
+    } catch (parseErr) {
+      console.error('Failed to parse OTP verify response', parseErr)
+      otpStep.error = 'Unexpected server response.'
+      return
+    }
+
+    if (res.ok && data.user) {
+      const token = data.token || data.plainTextToken || ''
+      if (token) {
+        localStorage.setItem('authToken', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      }
+
+      localStorage.setItem('isLoggedIn', 'true')
+      localStorage.setItem('userData', JSON.stringify(data.user))
+      localStorage.setItem('user', JSON.stringify(data.user))
+
+      if (loginForm.rememberMe) {
+        localStorage.setItem('rememberMe', 'true')
+        localStorage.setItem('rememberedUser', loginForm.email)
+      } else {
+        localStorage.removeItem('rememberMe')
+        localStorage.removeItem('rememberedUser')
+      }
+
+      otpStep.active = false
+      showAlert('success', 'OTP verified!', 'Redirecting to your dashboard...')
+
+      setTimeout(() => {
+        router.replace(pendingSession.redirectPath)
+      }, 800)
+    } else {
+      otpStep.error = data?.error || 'Invalid or expired code. Please try again.'
+    }
+  } catch (error) {
+    console.error('OTP verification error:', error)
+    otpStep.error = 'Unable to verify code. Check your connection and try again.'
+  } finally {
+    otpStep.isVerifying = false
+  }
+}
+
+const resendOtp = async () => {
+  otpStep.isResending = true
+  otpStep.error = ''
+
+  try {
+    const res = await fetch('http://localhost:8000/login/resend-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: otpStep.email
+      })
+    })
+
+    let data = null
+    try {
+      data = await res.json()
+    } catch (parseErr) {
+      console.error('Failed to parse resend response', parseErr)
+      otpStep.error = 'Unexpected server response.'
+      return
+    }
+
+    if (res.ok) {
+      otpStep.resendCount = data.resend_count || 0
+      otpStep.remainingAttempts = data.remaining_attempts || 0
+      otpStep.code = ''
+      showAlert('success', 'OTP resent!', `New code sent to ${data.destination || 'your email'}.`)
+    } else {
+      if (data?.limit_reached) {
+        otpStep.error = 'OTP resend limit reached (3 attempts). Please contact support to reset your limit.'
+      } else {
+        otpStep.error = data?.error || 'Failed to resend OTP. Try again later.'
+      }
+    }
+  } catch (error) {
+    console.error('Resend OTP error:', error)
+    otpStep.error = 'Unable to resend code. Check your connection and try again.'
+  } finally {
+    otpStep.isResending = false
+  }
+}
+
+// Forgot Password Functions
+const openForgotPasswordModal = () => {
+  forgotPasswordModal.active = true
+  forgotPasswordModal.step = 'request'
+  forgotPasswordModal.email = ''
+  forgotPasswordModal.code = ''
+  forgotPasswordModal.password = ''
+  forgotPasswordModal.passwordConfirm = ''
+  forgotPasswordModal.error = ''
+}
+
+const closeForgotPasswordModal = () => {
+  forgotPasswordModal.active = false
+  forgotPasswordModal.error = ''
+}
+
+const resetForgotModal = () => {
+  forgotPasswordModal.step = 'request'
+  forgotPasswordModal.code = ''
+  forgotPasswordModal.password = ''
+  forgotPasswordModal.passwordConfirm = ''
+  forgotPasswordModal.error = ''
+}
+
+const requestPasswordReset = async () => {
+  if (!forgotPasswordModal.email) {
+    forgotPasswordModal.error = 'Please enter your email address'
+    return
+  }
+
+  forgotPasswordModal.loading = true
+  forgotPasswordModal.error = ''
+
+  try {
+    const res = await fetch('http://localhost:8000/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: forgotPasswordModal.email
+      })
+    })
+
+    let data = null
+    try {
+      data = await res.json()
+    } catch (parseErr) {
+      console.error('Failed to parse forgot password response', parseErr)
+      forgotPasswordModal.error = 'Unexpected server response.'
+      return
+    }
+
+    if (res.ok && data.sent) {
+      forgotPasswordModal.step = 'verify'
+      forgotPasswordModal.destination = data.destination || 'your email'
+      showAlert('success', 'Reset Code Sent', `Check your email for the reset code.`)
+    } else {
+      forgotPasswordModal.error = data?.error || 'Failed to send reset code. Try again later.'
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error)
+    forgotPasswordModal.error = 'Unable to send reset code. Check your connection and try again.'
+  } finally {
+    forgotPasswordModal.loading = false
+  }
+}
+
+const resetPassword = async () => {
+  if (!forgotPasswordModal.code) {
+    forgotPasswordModal.error = 'Please enter the reset code'
+    return
+  }
+
+  if (!forgotPasswordModal.password) {
+    forgotPasswordModal.error = 'Please enter a new password'
+    return
+  }
+
+  if (forgotPasswordModal.password.length < 8) {
+    forgotPasswordModal.error = 'Password must be at least 8 characters'
+    return
+  }
+
+  if (forgotPasswordModal.password !== forgotPasswordModal.passwordConfirm) {
+    forgotPasswordModal.error = 'Passwords do not match'
+    return
+  }
+
+  forgotPasswordModal.loading = true
+  forgotPasswordModal.error = ''
+
+  try {
+    const res = await fetch('http://localhost:8000/forgot-password/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: forgotPasswordModal.email,
+        code: forgotPasswordModal.code.trim(),
+        password: forgotPasswordModal.password,
+        password_confirmation: forgotPasswordModal.passwordConfirm
+      })
+    })
+
+    let data = null
+    try {
+      data = await res.json()
+    } catch (parseErr) {
+      console.error('Failed to parse reset password response', parseErr)
+      forgotPasswordModal.error = 'Unexpected server response.'
+      return
+    }
+
+    if (res.ok && data.success) {
+      showAlert('success', 'Password Reset', 'Your password has been reset. Please login with your new password.')
+      closeForgotPasswordModal()
+      // Optionally pre-fill the login form
+      loginForm.email = forgotPasswordModal.email
+      loginForm.password = ''
+    } else {
+      if (res.status === 410) {
+        forgotPasswordModal.error = 'Reset code expired. Please request a new one.'
+      } else if (res.status === 422) {
+        forgotPasswordModal.error = 'Invalid reset code. Please try again.'
+      } else {
+        forgotPasswordModal.error = data?.error || 'Failed to reset password. Try again later.'
+      }
+    }
+  } catch (error) {
+    console.error('Reset password error:', error)
+    forgotPasswordModal.error = 'Unable to reset password. Check your connection and try again.'
+  } finally {
+    forgotPasswordModal.loading = false
   }
 }
 
@@ -504,6 +924,123 @@ onMounted(() => {
 .bubble:nth-child(13) { left: 75%; width: 40px; height: 40px; animation-delay: 9s; }
 .bubble:nth-child(14) { left: 5%; width: 70px; height: 70px; animation-delay: 12s; }
 .bubble:nth-child(15) { left: 85%; width: 35px; height: 35px; animation-delay: 5s; }
+
+.otp-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  backdrop-filter: blur(3px);
+}
+
+.otp-modal {
+  background: #fff;
+  padding: 24px;
+  border-radius: 16px;
+  width: min(420px, 90vw);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+  text-align: center;
+}
+
+.otp-modal h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.otp-hint {
+  margin: 0 0 16px;
+  color: #4b5563;
+}
+
+.otp-input {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-align: center;
+}
+
+.otp-input:focus {
+  border-color: #667eea;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.otp-error {
+  color: #dc2626;
+  margin: 10px 0 0;
+}
+
+.otp-actions {
+  margin-top: 16px;
+}
+
+.otp-button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.otp-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.otp-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.25);
+}
+
+.otp-expiry {
+  margin-top: 12px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.otp-footer {
+  margin-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.otp-resend-info {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.otp-resend-btn {
+  background: none;
+  border: none;
+  color: #667eea;
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.otp-resend-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.otp-limit-reached {
+  margin: 8px 0 0;
+  color: #dc2626;
+  font-size: 13px;
+}
+
 
 @keyframes bubbleFloat {
   0% {
@@ -698,6 +1235,35 @@ onMounted(() => {
   color: transparent;
 }
 
+.floating-label {
+  position: absolute;
+  left: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 16px;
+  pointer-events: none;
+  transition: all 0.3s ease;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0 8px;
+  max-width: calc(100% - 96px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform-origin: left center;
+}
+
+.form-input:focus + .floating-label,
+.form-input.filled + .floating-label,
+.floating-label.floating {
+  transform: translateY(-24px) scale(0.75);
+  color: #667eea;
+  font-weight: 600;
+  background: #fff;
+  z-index: 4;
+}
+
 .form-input:focus,
 .form-input.filled,
 .form-input.active {
@@ -718,25 +1284,6 @@ onMounted(() => {
 .form-input:focus ~ .input-icon {
   color: #667eea;
   transform: scale(1.1);
-}
-
-.floating-label {
-  position: absolute;
-  left: 48px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #9ca3af;
-  font-size: 16px;
-  pointer-events: none;
-  transition: all 0.3s ease;
-  z-index: 3;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 0 8px;
-  max-width: calc(100% - 96px);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transform-origin: left center;
 }
 
 .input-line {
@@ -1218,6 +1765,266 @@ onMounted(() => {
 .alert-slide-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(-20px);
+}
+
+/* Responsive Design */
+@media (max-width: 767px) {
+  .login-card {
+    padding: 24px;
+  }
+
+  .brand-logo {
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+  }
+
+  .login-title {
+    font-size: 24px;
+  }
+
+  .login-subtitle {
+    font-size: 14px;
+  }
+
+  .form-input {
+    padding: 12px 40px 12px 40px;
+  }
+
+  .input-icon {
+    left: 12px;
+  }
+
+  .floating-label {
+    left: 40px;
+    max-width: calc(100% - 80px);
+  }
+
+  .password-toggle {
+    right: 12px;
+  }
+
+  .login-button {
+    padding: 12px 24px;
+  }
+
+  .social-login {
+    gap: 12px;
+  }
+
+  .divider {
+    margin: 24px 0;
+  }
+
+  .version-info {
+    font-size: 12px;
+  }
+}
+
+/* Forgot Password Modal Styles */
+.forgot-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.forgot-modal {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  position: relative;
+  animation: slideUp 0.3s ease;
+}
+
+.forgot-modal h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  color: #1f2937;
+}
+
+.forgot-description {
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.forgot-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.forgot-close:hover {
+  color: #1f2937;
+}
+
+.forgot-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 14px;
+  background: #f9fafb;
+  transition: all 0.2s;
+}
+
+.forgot-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 16px;
+  transition: color 0.2s;
+}
+
+.password-toggle:hover {
+  color: #3b82f6;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 13px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: #fee2e2;
+  border-radius: 8px;
+}
+
+.forgot-button {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.forgot-button.primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  margin-bottom: 16px;
+}
+
+.forgot-button.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+}
+
+.forgot-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.forgot-footer {
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 16px;
+}
+
+.back-link {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: #2563eb;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .forgot-modal {
+    padding: 24px;
+    max-width: calc(100% - 32px);
+  }
+
+  .forgot-modal h2 {
+    font-size: 20px;
+  }
 }
 </style>
 

@@ -26,6 +26,11 @@ class User extends Authenticatable
         'created_by_user_id',
         'company_id',
         'must_change_password', // added
+        'otp_resend_count',
+        'otp_resend_limit_reset_at',
+        'profile_picture',
+        'phone',
+        'bio',
     ];
     /**
      * Get the role for the user.
@@ -82,6 +87,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'must_change_password' => 'boolean', // added
             'verified' => 'boolean',
+            'otp_resend_limit_reset_at' => 'datetime',
         ];
     }
 }

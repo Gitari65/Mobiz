@@ -88,11 +88,21 @@
         </div>
       </div>
     </div>
+
+    <!-- Chat Side Popup -->
+    <ChatSidePopup
+      :isOpen="showChatPopup"
+      :chatId="selectedChat?.id"
+      :recipientId="selectedChat ? getOtherUser(selectedChat).id : null"
+      :recipientName="selectedChat ? getOtherUser(selectedChat).name : ''"
+      @close="closeChatPopup"
+      @message-sent="onMessageSent"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import ChatSidePopup from './ChatSidePopup.vue'
 
@@ -111,6 +121,7 @@ const showNewChatForm = ref(false)
 const newChatUserId = ref('')
 const startingChat = ref(false)
 const currentUserId = ref(null)
+const refreshInterval = ref(null)
 
 // Chat Popup State
 const showChatPopup = ref(false)
@@ -189,12 +200,22 @@ async function loadChats() {
   }
 }
 
+// Silent refresh for chats without showing loading spinner
+async function refreshChats() {
+  try {
+    const res = await axios.get('/api/super/chats')
+    chats.value = res.data.data || []
+  } catch (e) {
+    console.debug('Failed to refresh chats', e)
+  }
+}
+
 async function loadUsers() {
   try {
-    const res = await axios.get('/api/super/users', { params: { per_page: 100 } })
+    const res = await axios.get('/api/super/chats/available-users')
     users.value = res.data.data || []
   } catch (e) {
-    console.error('Failed to load users', e)
+    console.error('Failed to load available users', e)
     users.value = []
   }
 }
@@ -219,10 +240,15 @@ async function startNewChat() {
     showChatPopup.value = true
   } catch (e) {
     console.error('Failed to start chat', e)
-    alert('Failed to start conversation')
+    alert('Failed to start conversation: ' + (e.response?.data?.error || 'Unknown error'))
   } finally {
     startingChat.value = false
   }
+}
+
+const closeChatPopup = () => {
+  showChatPopup.value = false
+  selectedChat.value = null
 }
 
 const onMessageSent = () => {
@@ -237,7 +263,30 @@ onMounted(() => {
   } catch (e) {
     console.warn('Failed to get user ID', e)
   }
+  loadChats()
+  loadUsers()
 })
+
+// Watch for modal opening and refresh data
+watch(
+  () => props.isOpen,
+  (newVal) => {
+    if (newVal) {
+      loadChats()
+      loadUsers()
+      // Start auto-refresh every 10 seconds using silent refresh
+      refreshInterval.value = setInterval(() => {
+        refreshChats()
+      }, 10000)
+    } else {
+      // Stop auto-refresh when modal closes
+      if (refreshInterval.value) {
+        clearInterval(refreshInterval.value)
+        refreshInterval.value = null
+      }
+    }
+  }
+)
 </script>
 
 <style scoped>

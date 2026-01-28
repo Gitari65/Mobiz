@@ -37,6 +37,18 @@
               <span class="nav-text">POS Sales</span>
             </router-link>
           </li>
+          <li class="nav-item">
+            <router-link to="/profile" class="nav-link" @click="setActiveItem('profile')">
+              <i class="fas fa-user-circle nav-icon"></i>
+              <span class="nav-text">My Profile</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
+              <i class="fas fa-cog nav-icon"></i>
+              <span class="nav-text">Settings</span>
+            </router-link>
+          </li>
         </template>
 
         <!-- ============= ADMIN MENUS ============= -->
@@ -78,27 +90,39 @@
             </router-link>
           </li>
           <li class="nav-item">
+            <router-link to="/promotions" class="nav-link" @click="setActiveItem('promotions')">
+              <i class="fas fa-tags nav-icon"></i>
+              <span class="nav-text">Promotions</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/accounts" class="nav-link" @click="setActiveItem('accounts')">
+              <i class="fas fa-money-bill-wave nav-icon"></i>
+              <span class="nav-text">Accounts</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
             <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
               <i class="fas fa-cogs nav-icon"></i>
               <span class="nav-text">Admin Customization</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/warehouses" class="nav-link" @click="setActiveItem('warehouses')">
-              <i class="fas fa-building nav-icon"></i>
-              <span class="nav-text">Warehouses</span>
-            </router-link>
-          </li>
-          <li class="nav-item">
-            <router-link to="/business-categories" class="nav-link" @click="setActiveItem('business-categories')">
-              <i class="fas fa-tags nav-icon"></i>
-              <span class="nav-text">Business Categories</span>
-            </router-link>
-          </li>
-          <li class="nav-item">
             <router-link to="/users" class="nav-link" @click="setActiveItem('users')">
               <i class="fas fa-users nav-icon"></i>
               <span class="nav-text">Manage Users</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/company-profile" class="nav-link" @click="setActiveItem('company-profile')">
+              <i class="fas fa-building nav-icon"></i>
+              <span class="nav-text">Company Profile</span>
+            </router-link>
+          </li>
+          <li class="nav-item">
+            <router-link to="/profile" class="nav-link" @click="setActiveItem('profile')">
+              <i class="fas fa-user-circle nav-icon"></i>
+              <span class="nav-text">My Profile</span>
             </router-link>
           </li>
           <li class="nav-item">
@@ -170,6 +194,20 @@
               <span class="nav-text">Impersonate Business Admin</span>
             </router-link>
           </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/profile" class="nav-link" @click="setActiveItem('superuser-profile')">
+              <i class="fas fa-user-circle nav-icon"></i>
+              <span class="nav-text">My Profile</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/settings" class="nav-link" @click="setActiveItem('superuser-settings')">
+              <i class="fas fa-cog nav-icon"></i>
+              <span class="nav-text">Settings</span>
+            </router-link>
+          </li>
         </template>
       </ul>
     </nav>
@@ -199,7 +237,7 @@
 
       <!-- Chat & Logout Buttons Row -->
       <div class="footer-actions">
-        <button v-if="isSuperUser" class="chat-btn" @click="openChatModal" :title="`${unreadCount} unread messages`">
+        <button class="chat-btn" @click="openChatModal" :title="`${unreadCount} unread messages`">
           <i class="fas fa-comments"></i>
           <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </button>
@@ -314,9 +352,15 @@ const loadUnreadCount = async () => {
       return
     }
 
-    // axios interceptor should already set Authorization header from token
-    const res = await axios.get('/api/super/chats/unread-count')
-    unreadCount.value = res.data.unread_count || 0
+    try {
+      // axios interceptor should already set Authorization header from token
+      const res = await axios.get('/api/super/chats/unread-count')
+      unreadCount.value = res.data.unread_count || 0
+    } catch (err) {
+      // Silently fail if endpoint doesn't exist yet
+      console.debug('Chat unread count endpoint not available')
+      unreadCount.value = 0
+    }
   } catch (e) {
     console.warn('Failed to load unread count', e)
   }
@@ -338,11 +382,11 @@ const onChatMessageSent = () => {
 // --- LIFECYCLE ---
 onMounted(() => {
   initializeUserRole()
-  if (isSuperUser.value) {
-    loadUnreadCount()
-    // Poll unread count every 10 seconds
-    chatRefreshInterval.value = setInterval(loadUnreadCount, 10000)
-  }
+  // Load unread count for all authenticated users
+  loadUnreadCount()
+  // Poll unread count every 10 seconds
+  chatRefreshInterval.value = setInterval(loadUnreadCount, 10000)
+  
   const path = router.currentRoute.value.path
   if (path.includes('/sales')) activeItem.value = 'sales'
   else if (path.includes('/products')) activeItem.value = 'products'

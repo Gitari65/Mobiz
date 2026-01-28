@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use App\Models\BusinessCategory;
 use App\Models\FeatureToggle;
 use App\Models\Announcement;
+use App\Models\Warehouse;
+use App\Models\PaymentMethod;
 
 class GlobalSettingsController extends Controller
 {
@@ -48,6 +50,41 @@ class GlobalSettingsController extends Controller
         if (!$a) $a = new Announcement();
         $a->text = $request->text;
         $a->save();
+        return response()->json(['success' => true]);
+    }
+
+    // Warehouses
+    public function listWarehouses() {
+        return response()->json(Warehouse::all(['id', 'name', 'type', 'user_id']));
+    }
+    public function addWarehouse(Request $request) {
+        $request->validate([
+            'name' => 'required|string|max:100',
+            'type' => 'nullable|string|max:50',
+        ]);
+        $warehouse = Warehouse::create([
+            'name' => $request->name,
+            'type' => $request->type,
+            'user_id' => auth()->id() ?? null,
+        ]);
+        return response()->json($warehouse);
+    }
+    public function deleteWarehouse($id) {
+        Warehouse::where('id', $id)->delete();
+        return response()->json(['success' => true]);
+    }
+
+    // Payment Methods
+    public function listPaymentMethods() {
+        return response()->json(PaymentMethod::where('is_active', true)->pluck('name'));
+    }
+    public function addPaymentMethod(Request $request) {
+        $request->validate(['name' => 'required|string|max:100']);
+        PaymentMethod::firstOrCreate(['name' => $request->name]);
+        return response()->json(['success' => true]);
+    }
+    public function deletePaymentMethod($name) {
+        PaymentMethod::where('name', $name)->delete();
         return response()->json(['success' => true]);
     }
 }

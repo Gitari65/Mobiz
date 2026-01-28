@@ -1,0 +1,562 @@
+<?php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\SaleController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\ProfileController;
+
+//superuser
+
+
+//company 
+
+Route::post('/register-company', [CompanyController::class, 'registerCompany']);
+Route::get('/companies/pending', [CompanyController::class, 'index']);
+Route::put('/companies/{id}/approve', [CompanyController::class, 'approve']);
+Route::delete('/companies/{id}/reject', [CompanyController::class, 'reject']);
+
+
+
+// AUTHENTICATION & USER MANAGEMENT
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login/verify-otp', [AuthController::class, 'verifyLoginOtp']);
+Route::post('/login/resend-otp', [AuthController::class, 'resendLoginOtp']);
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/forgot-password/verify-otp', [AuthController::class, 'verifyResetOtp']);
+
+// Change password for authenticated users (supports forced first-login change)
+Route::middleware('auth:sanctum')->post('/change-password', [AuthController::class, 'changePassword']);
+
+// Profile Management Routes (Authenticated Users)
+Route::middleware('auth:sanctum')->prefix('api/profile')->group(function () {
+    Route::get('/', [ProfileController::class, 'show']);
+    Route::put('/update', [ProfileController::class, 'update']);
+    Route::post('/upload-picture', [ProfileController::class, 'uploadPicture']);
+    Route::delete('/remove-picture', [ProfileController::class, 'removePicture']);
+    Route::put('/change-password', [ProfileController::class, 'changePassword']);
+    Route::post('/request-password-reset', [ProfileController::class, 'requestPasswordReset']);
+});
+
+// Password Reset via Token (Public route)
+Route::post('/api/password/reset-with-token', [ProfileController::class, 'resetPasswordWithToken']);
+
+// Test endpoint to create a user with known temporary password (DEV ONLY)
+Route::get('/test/create-user', function () {
+    $tempPassword = 'TESTPASS123';
+    
+    $user = \App\Models\User::updateOrCreate(
+        ['email' => 'test@example.com'],
+        [
+            'name' => 'Test User',
+            'password' => \Illuminate\Support\Facades\Hash::make($tempPassword),
+            'role_id' => \App\Models\Role::where('name', 'admin')->first()?->id ?? 1,
+            'company_id' => \App\Models\Company::first()?->id ?? 1,
+            'verified' => true,
+            'must_change_password' => true,
+        ]
+    );
+
+    return response()->json([
+        'message' => 'Test user ready.',
+        'email' => 'test@example.com',
+        'temporary_password' => $tempPassword,
+        'user' => $user->only(['id', 'name', 'email', 'verified', 'must_change_password'])
+    ]);
+});
+
+// Test endpoint to verify password (DEV ONLY)
+Route::post('/test/verify-password', function (\Illuminate\Http\Request $request) {
+    $request->validate([
+        'email' => 'required|string|email',
+        'password' => 'required|string'
+    ]);
+
+    $user = \App\Models\User::where('email', $request->email)->first();
+    if (!$user) {
+        return response()->json(['error' => 'User not found'], 404);
+    }
+
+    $match = \Illuminate\Support\Facades\Hash::check($request->password, $user->password);
+    return response()->json([
+        'email' => $request->email,
+        'password_provided' => $request->password,
+        'password_hash' => $user->password,
+        'match' => $match,
+        'user_verified' => $user->verified,
+        'user_must_change_password' => $user->must_change_password
+    ]);
+});
+
+// Test endpoint to reset a user's password (DEV ONLY)
+Route::post('/test/reset-password/{email}', function ($email) {
+    $user = \App\Models\User::where('email', $email)->first();
+    if (!$user) {
+        return response()->json(['error' => 'User not found'], 404);
+    }
+
+    $tempPassword = strtoupper(\Illuminate\Support\Str::random(8));
+    $user->password = \Illuminate\Support\Facades\Hash::make($tempPassword);
+    $user->must_change_password = true;
+    $user->save();
+
+    return response()->json([
+        'message' => 'Password reset. Use the temporary password below to login.',
+        'email' => $email,
+        'temporary_password' => $tempPassword,
+        'note' => 'In production, this password would be sent via email. You must change it on first login.'
+    ]);
+});
+
+// Test endpoint to get cached OTP (DEV ONLY)
+Route::get('/test/get-otp/{email}', function ($email) {
+    $user = \App\Models\User::where('email', $email)->first();
+    if (!$user) {
+        return response()->json(['error' => 'User not found'], 404);
+    }
+
+    $cacheKey = 'login_otp_' . $user->id;
+    $otp = \Illuminate\Support\Facades\Cache::get($cacheKey);
+
+    if (!$otp) {
+        return response()->json(['error' => 'No OTP cached for this user'], 404);
+    }
+
+    return response()->json([
+        'email' => $email,
+        'user_id' => $user->id,
+        'otp' => $otp,
+        'note' => 'This OTP endpoint is for testing only. Remove before production.'
+    ]);
+});
+
+Route::post('/verify-user/{id}', [AuthController::class, 'verifyUser']); // Superuser only
+Route::post('/reset-otp-limit/{userId}', [AuthController::class, 'resetOtpLimit']); // Superuser only
+Route::get('/unverified-users', [AuthController::class, 'unverifiedUsers']); // Superuser only
+// SUPER USER: Company management
+Route::get('/companies', [AuthController::class, 'listCompanies']);
+Route::patch('/companies/{id}/activate', [AuthController::class, 'activateCompany']);
+Route::patch('/companies/{id}/deactivate', [AuthController::class, 'deactivateCompany']);
+
+// SUPERUSER API ROUTES
+Route::prefix('api/superuser')->group(function () {
+  Route::get('/businesses', function () {
+    return response()->json(['businesses' => \App\Models\Company::all()]);
+  });
+  Route::get('/companies', function () {
+    return response()->json(['companies' => \App\Models\Company::where('active', false)->get()]);
+  });
+  Route::get('/companies', function () {
+    $status = request('status');
+    $query = \App\Models\Company::query();
+    if ($status === 'pending') {
+      $query->where('active', false);
+    }
+    return response()->json(['companies' => $query->get()]);
+  });
+  Route::get('/users', function () {
+    return response()->json(['users' => \App\Models\User::with('role')->get()]);
+  });
+  Route::get('/audit-logs', function () {
+    return response()->json(['logs' => []]);
+  });
+  Route::get('/business-categories', function () {
+    return response()->json(['categories' => \App\Models\BusinessCategory::all()]);
+  });
+  Route::get('/feature-toggles', function () {
+    return response()->json(['features' => []]);
+  });
+  Route::get('/announcement', function () {
+    return response()->json(['announcement' => null]);
+  });
+  Route::get('/support-tickets', function () {
+    return response()->json(['tickets' => []]);
+  });
+  Route::get('/subscriptions', function () {
+    return response()->json(['subscriptions' => []]);
+  });
+});
+
+// --- Superuser API (aggregates, users, audit, settings, support, exports, subscriptions, impersonation) ---
+Route::prefix('api/super')->middleware(['auth:sanctum'])->group(function () {
+    // Dashboard aggregates & analytics (cached)
+    Route::get('/dashboard/overview', [\App\Http\Controllers\SuperUser\DashboardController::class, 'overview']);
+
+    // User management (CRUD, search, paginate)
+    Route::get('/users', [\App\Http\Controllers\SuperUser\UserController::class, 'index']);
+    Route::post('/users', [\App\Http\Controllers\SuperUser\UserController::class, 'store']);
+    Route::get('/users/{id}', [\App\Http\Controllers\SuperUser\UserController::class, 'show']);
+    Route::put('/users/{id}', [\App\Http\Controllers\SuperUser\UserController::class, 'update']);
+    Route::patch('/users/{id}/activate', [\App\Http\Controllers\SuperUser\UserController::class, 'activate']);
+    Route::patch('/users/{id}/deactivate', [\App\Http\Controllers\SuperUser\UserController::class, 'deactivate']);
+    Route::post('/users/{id}/reset-password', [\App\Http\Controllers\SuperUser\UserController::class, 'resetPassword']);
+
+    // Audit logs (filterable)
+    Route::get('/audit-logs', [\App\Http\Controllers\SuperUser\AuditLogController::class, 'index']);
+
+    // System settings
+    Route::get('/settings', [\App\Http\Controllers\SuperUser\SystemSettingController::class, 'index']);
+    Route::post('/settings', [\App\Http\Controllers\SuperUser\SystemSettingController::class, 'store']);
+    Route::put('/settings/{id}', [\App\Http\Controllers\SuperUser\SystemSettingController::class, 'update']);
+    Route::delete('/settings/{id}', [\App\Http\Controllers\SuperUser\SystemSettingController::class, 'destroy']);
+
+    // Support tickets
+    Route::get('/support-tickets', [\App\Http\Controllers\SuperUser\SupportTicketController::class, 'index']);
+    Route::post('/support-tickets/{id}/reply', [\App\Http\Controllers\SuperUser\SupportTicketController::class, 'reply']);
+    Route::patch('/support-tickets/{id}/resolve', [\App\Http\Controllers\SuperUser\SupportTicketController::class, 'resolve']);
+
+    // Exports (enqueue export job, return job id / URL)
+    Route::post('/exports', [\App\Http\Controllers\SuperUser\ExportController::class, 'store']);
+    Route::get('/exports', [\App\Http\Controllers\SuperUser\ExportController::class, 'index']);
+    Route::get('/exports/{id}', [\App\Http\Controllers\SuperUser\ExportController::class, 'show']);
+    Route::get('/exports/{id}/download', [\App\Http\Controllers\SuperUser\ExportController::class, 'download']);
+
+    // Subscriptions & billing management
+    Route::get('/subscriptions', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'index']);
+    Route::get('/subscriptions/{id}', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'show']);
+    Route::patch('/subscriptions/{id}/activate', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'activate']);
+    Route::patch('/subscriptions/{id}/deactivate', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'deactivate']);
+    Route::post('/subscriptions/{id}/renew', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'renew']);
+    Route::post('/subscriptions/{id}/trial', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'assignTrial']);
+    Route::get('/subscriptions/{id}/transactions', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'transactions']);
+
+    // Plan management
+    Route::get('/plans', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'listPlans']);
+    Route::post('/plans', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'storePlan']);
+    Route::put('/plans/{id}', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'updatePlan']);
+    Route::delete('/plans/{id}', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'deletePlan']);
+
+    // Impersonation
+    Route::post('/impersonate/{userId}', [\App\Http\Controllers\SuperUser\ImpersonationController::class, 'impersonate']);
+    Route::post('/impersonate/revert', [\App\Http\Controllers\SuperUser\ImpersonationController::class, 'revert']);
+    Route::get('/impersonate/status', [\App\Http\Controllers\SuperUser\ImpersonationController::class, 'status']);
+    Route::get('/impersonate/businesses', [\App\Http\Controllers\SuperUser\ImpersonationController::class, 'listBusinesses']);
+
+    // Chat management
+    Route::get('/chats', [\App\Http\Controllers\SuperUser\ChatController::class, 'index']);
+    Route::post('/chats', [\App\Http\Controllers\SuperUser\ChatController::class, 'store']);
+    Route::get('/chats/{id}', [\App\Http\Controllers\SuperUser\ChatController::class, 'show']);
+    Route::post('/chats/{id}/messages', [\App\Http\Controllers\SuperUser\ChatController::class, 'sendMessage']);
+    Route::patch('/chats/{id}/close', [\App\Http\Controllers\SuperUser\ChatController::class, 'closeChat']);
+    Route::get('/chats/unread-count', [\App\Http\Controllers\SuperUser\ChatController::class, 'unreadCount']);
+});
+
+// PRODUCTS
+Route::get('/products', [ProductController::class, 'index']);
+Route::get('/products/statistics', [ProductController::class, 'getStatistics']);
+Route::get('/products/out-of-stock', [ProductController::class, 'getOutOfStockProducts']);
+Route::get('/products/low-stock', [ProductController::class, 'getLowStockProducts']);
+Route::get('/products/csv-template', [ProductController::class, 'downloadCSVTemplate']);
+Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::middleware(['role:admin'])->group(function () {
+    Route::post('/products', [ProductController::class, 'store']);
+    Route::post('/products/bulk', [ProductController::class, 'storeBulk']);
+    Route::post('/products/import-csv', [ProductController::class, 'importCSV']);
+    Route::put('/products/{id}', [ProductController::class, 'update']);
+    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+    // Business Categories (admin only)
+    Route::post('/business-categories', [ProductController::class, 'storeCategory']);
+    Route::put('/business-categories/{id}', [ProductController::class, 'updateCategory']);
+    Route::delete('/business-categories/{id}', [ProductController::class, 'destroyCategory']);
+
+    // Warehouses (admin only)
+    Route::post('/warehouses', [ProductController::class, 'storeWarehouse']);
+    Route::put('/warehouses/{id}', [ProductController::class, 'updateWarehouse']);
+    Route::delete('/warehouses/{id}', [ProductController::class, 'destroyWarehouse']);
+});
+
+// SALES
+Route::post('/sales', [SaleController::class, 'store']);
+Route::get('/sales', [SaleController::class, 'index']);
+Route::get('/sales/{id}', [SaleController::class, 'show']);
+
+// DASHBOARD
+Route::get('/dashboard-stats', [DashboardController::class, 'getStats']);
+
+// PURCHASES
+Route::post('/purchases', [PurchaseController::class, 'store']);
+Route::get('/purchases', [PurchaseController::class, 'index']);
+
+// REPORTS
+Route::prefix('reports')->group(function () {
+    Route::get('/sales-overview', [ReportController::class, 'salesOverview']);
+    Route::get('/inventory-summary', [ReportController::class, 'inventorySummary']);
+    Route::get('/top-selling-products', [ReportController::class, 'topSellingProducts']);
+});
+
+// EXPENSES
+Route::get('/expenses', [ExpenseController::class, 'index']);
+Route::get('/expenses/categories', [ExpenseController::class, 'getCategories']);
+Route::get('/expenses/payment-methods', [ExpenseController::class, 'getPaymentMethods']);
+Route::get('/expenses/dashboard', [ExpenseController::class, 'getDashboard']);
+Route::get('/expenses/profit-loss', [ExpenseController::class, 'getProfitLoss']);
+Route::get('/expenses/export', [ExpenseController::class, 'export']);
+Route::get('/expenses/{id}', [ExpenseController::class, 'show']);
+Route::post('/expenses', [ExpenseController::class, 'store']);
+Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
+Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
+Route::patch('/expenses/{id}/approve', [ExpenseController::class, 'approve']);
+Route::patch('/expenses/{id}/reject', [ExpenseController::class, 'reject']);
+Route::patch('/expenses/{id}/mark-paid', [ExpenseController::class, 'markAsPaid']);
+
+// Test route for expense system
+Route::get('/test-expenses', function () {
+    try {
+        $expenses = App\Models\Expense::all();
+        return response()->json([
+            'status' => 'success',
+            'count' => $expenses->count(),
+            'expenses' => $expenses
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ]);
+    }
+});
+
+// Roles & Categories endpoints (public, no auth required)
+Route::get('/roles', [\App\Http\Controllers\RoleController::class, 'index']);
+Route::get('/business-categories', [\App\Http\Controllers\BusinessCategoryController::class, 'index']);
+
+// API-compatible company endpoints used by frontend (alias to existing controller methods)
+Route::prefix('api')->group(function () {
+    // Roles endpoint (public)
+    Route::get('/roles', [\App\Http\Controllers\RoleController::class, 'index']);
+
+    // Business categories endpoint (public)
+    Route::get('/business-categories', [\App\Http\Controllers\BusinessCategoryController::class, 'index']);
+
+    // list all companies
+    Route::get('/companies', function () {
+        return response()->json(['companies' => \App\Models\Company::all()]);
+    });
+
+    // pending companies
+    Route::get('/companies/pending', function () {
+        return response()->json(['companies' => \App\Models\Company::where('active', false)->get()]);
+    });
+
+    // approve / reject via API (map to existing controller methods)
+    Route::post('/companies/{id}/approve', [CompanyController::class, 'approve']);
+    Route::post('/companies/{id}/reject', [CompanyController::class, 'reject']);
+
+    // activate / deactivate aliases (map to existing AuthController methods)
+    Route::patch('/companies/{id}/activate', [AuthController::class, 'activateCompany']);
+    Route::patch('/companies/{id}/deactivate', [AuthController::class, 'deactivateCompany']);
+});
+
+// Dashboard alias for legacy frontend calls (protected)
+Route::middleware('auth:sanctum')->get('/dashboard/overview', [\App\Http\Controllers\SuperUser\DashboardController::class, 'overview']);
+
+// ADMIN API ENDPOINTS (for admin pages)
+Route::middleware(['auth:sanctum'])->group(function () {
+    // Get current authenticated user
+    Route::get('/api/user', function () {
+        return response()->json(auth()->user()->load('company', 'role'));
+    });
+
+    // Users CRUD for admin
+    Route::get('/users', function () {
+        // Only return users for the admin's company
+        $user = auth()->user();
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $users = \App\Models\User::with('role')->where('company_id', $user->company_id)->get();
+        return response()->json(['users' => $users]);
+    });
+
+    Route::post('/users', function (\Illuminate\Http\Request $request) {
+        $user = auth()->user();
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $payload = $request->validate([
+            'name'=>'required|string|max:255',
+            'email'=>'required|email|unique:users,email',
+            'password'=>'required|string|min:6',
+            'role_id'=>'required|exists:roles,id'
+        ]);
+        $payload['company_id'] = $user->company_id;
+        $payload['password'] = \Illuminate\Support\Facades\Hash::make($payload['password']);
+        $payload['verified'] = true;
+        $payload['must_change_password'] = true;
+        $newUser = \App\Models\User::create($payload);
+        return response()->json($newUser, 201);
+    });
+
+    Route::put('/users/{id}', function ($id, \Illuminate\Http\Request $request) {
+        $user = auth()->user();
+        $target = \App\Models\User::findOrFail($id);
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator']) || $target->company_id !== $user->company_id) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $data = $request->validate([
+            'name'=>'nullable|string|max:255',
+            'email'=>['nullable','email', \Illuminate\Validation\Rule::unique('users','email')->ignore($id)],
+            'role_id'=>'nullable|exists:roles,id'
+        ]);
+        $target->update($data);
+        return response()->json($target);
+    });
+
+    Route::delete('/users/{id}', function ($id) {
+        $user = auth()->user();
+        $target = \App\Models\User::findOrFail($id);
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator']) || $target->company_id !== $user->company_id) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $target->delete();
+        return response()->json(['message' => 'User deleted']);
+    });
+
+    // Warehouses CRUD for admin
+    Route::get('/warehouses', function () {
+        $user = auth()->user();
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $warehouses = \App\Models\Warehouse::where('company_id', $user->company_id)->get();
+        return response()->json($warehouses);
+    });
+
+    Route::post('/warehouses', function (\Illuminate\Http\Request $request) {
+        $user = auth()->user();
+        if (!$user) {
+            return response()->json(['error' => 'Not authenticated'], 401);
+        }
+        
+        if (!in_array(strtolower($user->role->name), ['admin','administrator'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        
+        if (!$user->company_id) {
+            return response()->json([
+                'error' => 'No company associated with your account',
+                'message' => 'Please contact support to link your account to a company',
+                'user_id' => $user->id,
+                'user_name' => $user->name
+            ], 400);
+        }
+        
+        $payload = $request->validate([
+            'name'=>'required|string|max:255',
+            'type'=>'nullable|string|max:50'
+        ]);
+        
+        $payload['company_id'] = $user->company_id;
+        
+        \Log::info('Creating warehouse:', [
+            'payload' => $payload,
+            'user_id' => $user->id,
+            'user_company_id' => $user->company_id,
+            'user_name' => $user->name
+        ]);
+        
+        $warehouse = \App\Models\Warehouse::create($payload);
+        
+        \Log::info('Warehouse created:', [
+            'warehouse_id' => $warehouse->id,
+            'warehouse_company_id' => $warehouse->company_id
+        ]);
+        
+        return response()->json($warehouse, 201);
+    });
+
+    Route::put('/warehouses/{id}', function ($id, \Illuminate\Http\Request $request) {
+        $user = auth()->user();
+        $warehouse = \App\Models\Warehouse::findOrFail($id);
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator']) || $warehouse->company_id !== $user->company_id) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $data = $request->validate([
+            'name'=>'nullable|string|max:255',
+            'type'=>'nullable|string|max:50'
+        ]);
+        $warehouse->update($data);
+        return response()->json($warehouse);
+    });
+
+    Route::delete('/warehouses/{id}', function ($id) {
+        $user = auth()->user();
+        $warehouse = \App\Models\Warehouse::findOrFail($id);
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator']) || $warehouse->company_id !== $user->company_id) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        $warehouse->delete();
+        return response()->json(['message' => 'Warehouse deleted']);
+    });
+
+    // Payment Methods CRUD for admin
+    Route::get('/payment-methods', function () {
+        $user = auth()->user();
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        
+        // Get all payment methods with company's enabled status
+        $methods = \App\Models\PaymentMethod::where('is_active', true)->get()->map(function($method) use ($user) {
+            $pivot = \DB::table('company_payment_methods')
+                ->where('company_id', $user->company_id)
+                ->where('payment_method_id', $method->id)
+                ->first();
+            
+            // Default enable Cash and M-Pesa for new companies
+            $defaultEnabled = in_array($method->name, ['Cash', 'M-Pesa']);
+            
+            return [
+                'id' => $method->id,
+                'name' => $method->name,
+                'description' => $method->description,
+                'is_enabled' => $pivot ? $pivot->is_enabled : $defaultEnabled,
+                'created_at' => $method->created_at
+            ];
+        });
+        
+        return response()->json($methods);
+    });
+
+    Route::post('/payment-methods/{id}/toggle', function ($id) {
+        $user = auth()->user();
+        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        
+        $method = \App\Models\PaymentMethod::findOrFail($id);
+        
+        $pivot = \DB::table('company_payment_methods')
+            ->where('company_id', $user->company_id)
+            ->where('payment_method_id', $id)
+            ->first();
+        
+        if ($pivot) {
+            // Toggle existing status
+            \DB::table('company_payment_methods')
+                ->where('company_id', $user->company_id)
+                ->where('payment_method_id', $id)
+                ->update([
+                    'is_enabled' => !$pivot->is_enabled,
+                    'updated_at' => now()
+                ]);
+        } else {
+            // Create new entry - determine initial state based on defaults
+            $defaultEnabled = in_array($method->name, ['Cash', 'M-Pesa']);
+            \DB::table('company_payment_methods')->insert([
+                'company_id' => $user->company_id,
+                'payment_method_id' => $id,
+                'is_enabled' => !$defaultEnabled, // Toggle from default
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        }
+        
+        return response()->json(['message' => 'Payment method toggled successfully']);
+    });
+});

@@ -7,27 +7,33 @@ import ProductsPage from '../pages/Users/ProductsPage.vue'
 import SalesPage from '../pages/Users/SalesPage.vue'
 import ReportsPage from '../pages/Users/ReportPage.vue'
 import ExpensePage from '../pages/Users/ExpensePage.vue'
+const SettingsPage = () => import('../pages/Users/SettingsPage.vue')
 
 //import superuser pages
 import SuperUserDashboard from '../pages/superuser/SuperUserDashboard.vue'
 import SystemLogsPage from '../pages/superuser/SystemLogsPage.vue'
 import UserManagementPage from '../pages/superuser/UserManagementPage.vue'
 import GlobalSettingsPage from '../pages/superuser/GlobalSettingsPage.vue'
-import SettingsPage from '../pages/superuser/SettingsPage.vue'
+import SuperUserSettingsPage from '../pages/superuser/SuperUserSettingsPage.vue'
 import SubscriptionManagementPage from '../pages/superuser/SubscriptionsPage.vue'
 import DataExportPage from '../pages/superuser/DataExportPage.vue'
 import AuditLogsPage from '../pages/superuser/AuditLogsPage.vue'
 import ImpersonatePage from '../pages/superuser/ImpersonatePage.vue'
-import SupportPage from '../pages/superuser/SupportPage.vue' // <-- added
+import SupportPage from '../pages/superuser/SupportPage.vue'
+import ProfilePage from '../pages/superuser/ProfilePage.vue'
 
 import LoginPage from '../pages/Auth/LoginPage.vue'
 import SignupPage from '../pages/Auth/SignupPage.vue'
 
-import AdminCustomizationPage from '../pages/admin/AdminCustomizationPage.vue'
-import WarehousesPage from '../pages/admin/WarehousesPage.vue'
-import BusinessCategoriesPage from '../pages/admin/BusinessCategoriesPage.vue'
-import ManageUsersPage from '../pages/admin/ManageUsersPage.vue'
-import AdminSettingsPage from '../pages/admin/AdminSettingsPage.vue'
+import AdminCustomizationPage from '../pages/Admin/AdminCustomizationPage.vue'
+import WarehousesPage from '../pages/Admin/WarehousesPage.vue'
+import BusinessCategoriesPage from '../pages/Admin/BusinessCategoriesPage.vue'
+import ManageUsersPage from '../pages/Admin/ManageUsersPage.vue'
+import AdminSettingsPage from '../pages/Admin/AdminSettingsPage.vue'
+import PromotionsPage from '../pages/Admin/PromotionsPage.vue'
+import AccountsManagementPage from '../pages/Admin/AccountsManagementPage.vue'
+// New admin company profile page (to add)
+const CompanyProfilePage = () => import('../pages/Admin/CompanyProfilePage.vue')
 
 import UnauthorizedPage from '../components/UnauthorizedPage.vue'
 import NotFoundPage from '../components/NotFoundPage.vue'
@@ -136,6 +142,17 @@ const routes = [
       title: 'Products - Mobiz POS'
     }
   },
+  // Company Profile - Admin and SuperUser
+  {
+    path: '/company-profile',
+    name: 'CompanyProfile',
+    component: CompanyProfilePage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Company Profile - Mobiz POS'
+    }
+  },
 
   // Inventory - Admin and SuperUser only
   {
@@ -185,6 +202,30 @@ const routes = [
     }
   },
 
+  // Promotions - Admin only
+  {
+    path: '/promotions',
+    name: 'Promotions',
+    component: PromotionsPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Promotions & Discounts - Mobiz POS'
+    }
+  },
+
+  // Accounts Management - Admin only
+  {
+    path: '/accounts',
+    name: 'AccountsManagement',
+    component: AccountsManagementPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Accounts Management - Mobiz POS'
+    }
+  },
+
   // SuperUser routes - SuperUser only
   {
     path: '/super-user',
@@ -217,9 +258,9 @@ const routes = [
     }
   },
   {
-    path: '/settings',
-    name: 'Settings',
-    component: SettingsPage,
+    path: '/superuser/settings',
+    name: 'SuperUserSettings',
+    component: SuperUserSettingsPage,
     meta: {
       requiresAuth: true,
       requiresRole: ROLES.SUPERUSER,
@@ -286,6 +327,16 @@ const routes = [
       title: 'Impersonate User - Mobiz POS'
     }
   },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: ProfilePage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.CASHIER,
+      title: 'My Profile - Mobiz POS'
+    }
+  },
   // --- Compatibility redirects for old /superuser/* links used in some components ---
   {
     path: '/superuser',
@@ -323,6 +374,10 @@ const routes = [
     path: '/superuser/impersonate',
     redirect: '/impersonate'
   },
+  {
+    path: '/superuser/profile',
+    redirect: '/profile'
+  },
 
   // Admin-only pages (also accessible to superuser)
   {
@@ -357,11 +412,11 @@ const routes = [
   },
   {
     path: '/settings',
-    name: 'AdminSettings',
-    component: AdminSettingsPage,
+    name: 'Settings',
+    component: SettingsPage,
     meta: {
       requiresAuth: true,
-      requiresRole: ROLES.ADMIN,
+      requiresRole: ROLES.CASHIER, // Allow all roles (Cashier, Admin, SuperUser)
       title: 'Settings - Mobiz POS'
     }
   },

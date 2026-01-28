@@ -23,6 +23,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             // ...other seeders...
             \Database\Seeders\SuperuserSeeder::class,
+            \Database\Seeders\PaymentMethodSeeder::class,
+            \Database\Seeders\WarehouseSeeder::class,
         ]);
     }
 }

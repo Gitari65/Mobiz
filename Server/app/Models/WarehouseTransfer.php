@@ -8,11 +8,18 @@ class WarehouseTransfer extends Model
 {
     use HasFactory;
     protected $fillable = [
+        'transfer_number',
         'product_id',
         'from_warehouse_id',
         'to_warehouse_id',
         'quantity',
         'user_id',
+        'company_id',
+        'transfer_type',
+        'reason',
+        'reference',
+        'external_target',
+        'note',
     ];
 
     public function product()
@@ -30,5 +37,10 @@ class WarehouseTransfer extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
     }
 }

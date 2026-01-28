@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class Warehouse extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'user_id', 'type'];
+    
+    protected $fillable = [
+        'name',
+        'type',
+        'company_id',
+    ];
 
     // A warehouse can have many products (stock)
     public function products()
@@ -18,7 +23,17 @@ class Warehouse extends Model
     // A warehouse can have many users assigned
     public function users()
     {
-        return $this->hasMany(User::class);
+        return $this->hasMany(User::class, 'warehouse_id');
+    }
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     // Helper: Generate warehouse name for user

@@ -5,7 +5,7 @@
       <div class="chat-header">
         <div class="chat-info">
           <h3 class="chat-title">{{ recipientName }}</h3>
-          <p class="chat-subtitle">{{ isLoading ? 'Loading...' : chatStatus }}</p>
+          <p class="chat-subtitle">{{ loading ? 'Loading...' : chatStatus }}</p>
         </div>
         <button @click="closeSidePopup" class="btn-close">
           <i class="fas fa-times"></i>
@@ -77,6 +77,7 @@ const sending = ref(false)
 const newMessage = ref('')
 const messagesContainer = ref(null)
 const currentUserId = ref(null)
+const messageRefreshInterval = ref(null)
 
 // Computed
 const chatStatus = computed(() => {
@@ -116,6 +117,24 @@ async function loadChat() {
   }
 }
 
+// Silent refresh without showing loading indicator
+async function refreshMessages() {
+  if (!props.chatId) return
+
+  try {
+    const res = await axios.get(`/api/super/chats/${props.chatId}`)
+    const newMessages = res.data.messages || []
+    
+    // Only update if there are new messages to avoid unnecessary re-renders
+    if (newMessages.length > messages.value.length) {
+      messages.value = newMessages
+      await scrollToBottom()
+    }
+  } catch (e) {
+    console.debug('Failed to refresh messages', e)
+  }
+}
+
 async function sendMessage() {
   if (!newMessage.value.trim() || !props.chatId) return
 
@@ -152,6 +171,18 @@ watch(
   async (newVal) => {
     if (newVal && props.chatId) {
       await loadChat()
+      // Start polling for new messages every 5 seconds using silent refresh
+      messageRefreshInterval.value = setInterval(() => {
+        if (props.chatId) {
+          refreshMessages()
+        }
+      }, 5000)
+    } else {
+      // Stop polling when chat closes
+      if (messageRefreshInterval.value) {
+        clearInterval(messageRefreshInterval.value)
+        messageRefreshInterval.value = null
+      }
     }
   }
 )

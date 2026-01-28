@@ -28,7 +28,16 @@
               type="text" 
               class="search-input" 
               v-model="searchQuery"
-              placeholder="Search products..." 
+              placeholder="Search products, SKU, category..." 
+            />
+          </div>
+          <div class="barcode-scan">
+            <i class="fas fa-barcode barcode-icon"></i>
+            <input
+              v-model="barcodeInput"
+              @keyup.enter="handleBarcodeEnter"
+              placeholder="Scan barcode..."
+              class="barcode-input"
             />
           </div>
           <div class="stats-mini">
@@ -37,6 +46,29 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+      <div class="filter-group">
+        <label><i class="fas fa-tags"></i> Category</label>
+        <select v-model="categoryFilter" class="filter-select">
+          <option value="">All Categories</option>
+          <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label><i class="fas fa-box"></i> Stock</label>
+        <select v-model="stockFilter" class="filter-select">
+          <option value="all">All Stock</option>
+          <option value="in-stock">In Stock (>10)</option>
+          <option value="low-stock">Low Stock (1-10)</option>
+          <option value="out-of-stock">Out of Stock</option>
+        </select>
+      </div>
+      <button v-if="hasActiveFilters" @click="clearFilters" class="clear-filters-btn">
+        <i class="fas fa-times"></i> Clear Filters
+      </button>
     </div>
 
     <!-- Main Content -->
@@ -142,9 +174,23 @@
                 <span>Subtotal:</span>
                 <span>Ksh {{ formatPrice(total) }}</span>
               </div>
+              
+              <!-- Applied Promotions Details -->
+              <div v-if="appliedPromos.length > 0" class="applied-promos-section">
+                <div class="promo-header">🎉 Active Promotions ({{ appliedPromos.length }}):</div>
+                <div v-for="promo in appliedPromos" :key="promo.id" class="promo-item">
+                  <span class="promo-name">{{ promo.name }}</span>
+                  <span class="promo-discount">- Ksh {{ formatPrice(promo.discount) }}</span>
+                </div>
+                <div class="summary-line promo-total">
+                  <span><strong>Total Discount:</strong></span>
+                  <span><strong>- Ksh {{ formatPrice(promoDiscount) }}</strong></span>
+                </div>
+              </div>
+              
               <div class="summary-line total-line">
                 <span>Total:</span>
-                <span>Ksh {{ formatPrice(total) }}</span>
+                <span>Ksh {{ formatPrice(netTotal) }}</span>
               </div>
             </div>
 
@@ -152,6 +198,15 @@
             <div class="payment-section">
               <h3>Payment Details</h3>
               
+              <div class="form-group">
+                <label>Payment Method</label>
+                <select v-model="paymentForm.paymentMethod" class="payment-method-select">
+                  <option v-for="method in paymentMethods" :key="method.id" :value="method.name">
+                    {{ getPaymentIcon(method.name) }} {{ method.name }}
+                  </option>
+                </select>
+              </div>
+
               <div class="form-group">
                 <label>Amount Paid</label>
                 <div class="amount-input">
@@ -163,6 +218,40 @@
                     step="0.01"
                     min="0"
                   />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Customer</label>
+                <select v-model="selectedCustomerId">
+                  <option value="">Walk-in / Other</option>
+                  <option v-for="cust in customers" :key="cust.id" :value="cust.id">
+                    {{ cust.name }}
+                  </option>
+                </select>
+              </div>
+
+              <div v-if="selectedCustomerId" class="credit-status-info">
+                <div v-if="selectedCustomerData" class="credit-details">
+                  <div class="credit-item">
+                    <span class="credit-label">Current Balance:</span>
+                    <span class="credit-value" :class="selectedCustomerData.credit_balance > 0 ? 'warning' : 'success'">
+                      Ksh {{ formatPrice(selectedCustomerData.credit_balance || 0) }}
+                    </span>
+                  </div>
+                  <div class="credit-item">
+                    <span class="credit-label">Credit Limit:</span>
+                    <span class="credit-value info">Ksh {{ formatPrice(selectedCustomerData.credit_limit || 0) }}</span>
+                  </div>
+                  <div class="credit-item">
+                    <span class="credit-label">Available Credit:</span>
+                    <span class="credit-value" :class="availableCredit <= 0 ? 'danger' : 'success'">
+                      Ksh {{ formatPrice(Math.max(0, (selectedCustomerData.credit_limit || 0) - (selectedCustomerData.credit_balance || 0))) }}
+                    </span>
+                  </div>
+                  <div v-if="(selectedCustomerData.credit_balance || 0) > (selectedCustomerData.credit_limit || 0)" class="limit-warning">
+                    ⚠️ Customer has exceeded credit limit!
+                  </div>
                 </div>
               </div>
 
@@ -209,6 +298,22 @@
                   {{ getSubmitButtonText() }}
                 </div>
               </button>
+
+              <div v-if="creditBlockReason" class="credit-block-msg">
+                <i class="fas fa-ban"></i>
+                <span>{{ creditBlockReason }}</span>
+              </div>
+
+              <div class="printer-controls">
+                <button type="button" class="secondary-btn" @click="connectPrinter">
+                  <i :class="printerConnected ? 'fas fa-print' : 'fas fa-plug'" aria-hidden="true"></i>
+                  {{ printerConnected ? 'Printer Connected' : 'Connect Printer' }}
+                </button>
+                <button type="button" class="secondary-btn" @click="testPrint" :disabled="!printerConnected">
+                  <i class="fas fa-file-alt" aria-hidden="true"></i>
+                  Test Print
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -236,12 +341,12 @@
         
         <div class="receipt-content" ref="receiptContent">
           <div class="receipt-paper">
-            <!-- Receipt Header -->
+            <!-- Receipt Header (uses printer settings; shows placeholders if not edited) -->
             <div class="receipt-business-header">
-              <h1>🌾 AGROVET SUPPLIES</h1>
-              <p>Your Trusted Agricultural Partner</p>
-              <p>📍 Kerugoya, Kirinyaga County</p>
-              <p>📞 Contact: +254-XXX-XXXX</p>
+              <template v-if="headerLines.length">
+                <h1 v-if="headerLines[0]" class="receipt-title">{{ headerLines[0] }}</h1>
+                <p v-for="(line, idx) in headerLines.slice(1)" :key="idx" class="receipt-subline">{{ line }}</p>
+              </template>
               <div class="receipt-divider">═══════════════════════════</div>
             </div>
 
@@ -280,6 +385,14 @@
                 <span><strong>SUBTOTAL:</strong></span>
                 <span><strong>Ksh {{ receiptData.subtotal }}</strong></span>
               </div>
+              <div class="receipt-total-line" v-if="receiptData.showTaxes && Number(receiptData.taxAmount) > 0">
+                <span>{{ receiptData.taxLabel }}:</span>
+                <span>+ Ksh {{ receiptData.taxAmount }}</span>
+              </div>
+              <div class="receipt-total-line" v-if="receiptData.discount && Number(receiptData.discount) > 0">
+                <span>Discounts:</span>
+                <span>- Ksh {{ receiptData.discount }}</span>
+              </div>
               <div class="receipt-total-line">
                 <span><strong>TOTAL:</strong></span>
                 <span><strong>Ksh {{ receiptData.total }}</strong></span>
@@ -288,18 +401,37 @@
                 <span>Amount Paid:</span>
                 <span>Ksh {{ receiptData.amountPaid }}</span>
               </div>
-              <div class="receipt-total-line" v-if="receiptData.change > 0">
+              <div class="receipt-total-line" v-if="receiptData.balanceDue && Number(receiptData.balanceDue) > 0">
+                <span><strong>Balance Due:</strong></span>
+                <span><strong>Ksh {{ receiptData.balanceDue }}</strong></span>
+              </div>
+              <div class="receipt-total-line" v-else-if="receiptData.change > 0">
                 <span>Change:</span>
                 <span>Ksh {{ receiptData.change }}</span>
               </div>
+              <div class="receipt-divider">═══════════════════════════</div>
+              <div v-if="receiptData.balanceDue && Number(receiptData.balanceDue) > 0" class="receipt-credit-note">
+                <p><em>ℹ️ Balance added to customer credit account</em></p>
+              </div>
+            </div>
+
+            <div v-if="receiptData.promotions && receiptData.promotions.length" class="receipt-promos">
+              <p><strong>Applied Promotions:</strong></p>
+              <ul>
+                <li v-for="promo in receiptData.promotions" :key="promo.id">
+                  {{ promo.name }} ({{ promo.type }}): -Ksh {{ promo.discount.toFixed ? promo.discount.toFixed(2) : promo.discount }}
+                </li>
+              </ul>
               <div class="receipt-divider">═══════════════════════════</div>
             </div>
 
             <!-- Footer -->
             <div class="receipt-footer">
               <p v-if="receiptData.notes"><strong>Notes:</strong> {{ receiptData.notes }}</p>
-              <p class="thank-you">🙏 Thank you for your business!</p>
-              <p class="return-policy">* Return policy: 7 days with receipt</p>
+              <template v-if="footerLines.length">
+                <p v-for="(line, idx) in footerLines" :key="idx" class="thank-you">{{ line }}</p>
+              </template>
+              <p class="return-policy" v-if="showDiscountsFlag">* Discounts shown where applicable</p>
               <p class="service-notice">💚 Quality products, reliable service</p>
             </div>
           </div>
@@ -330,6 +462,9 @@ const cartOpen = ref(false)
 const loading = ref(false)
 const submitting = ref(false)
 const searchQuery = ref('')
+const categoryFilter = ref('')
+const stockFilter = ref('all')
+const promoRefreshTimeout = ref(null)
 
 const alert = ref({
   show: false,
@@ -337,43 +472,198 @@ const alert = ref({
   type: 'success' // success, error, warning, info
 })
 
+const customers = ref([])
+const selectedCustomerId = ref('')
+const barcodeInput = ref('')
+const printerConnected = ref(false)
+const paymentMethods = ref([])
+
+// Printer and Tax settings
+const printerSettings = ref({
+  header_message: '',
+  footer_message: '',
+  show_logo: true,
+  show_taxes: true,
+  show_discounts: true,
+  paper_size: '58mm',
+  alignment: 'center'
+})
+const defaultTaxConfig = ref(null)
+const taxConfigs = ref([])
+
 const saleForm = ref({
   customer_name: '',
   notes: ''
 })
 
 const paymentForm = ref({
-  amountPaid: 0
+  amountPaid: 0,
+  paymentMethod: 'Cash'
 })
+
+const promoDiscount = ref(0)
+const appliedPromos = ref([])
 
 const showReceipt = ref(false)
 const receiptData = ref({})
 const receiptContent = ref(null)
 
+// Printer-friendly display helpers: show configured text (including placeholders) or sensible defaults when empty
+const headerLines = computed(() => {
+  const text = (printerSettings.value.header_message || '').trim()
+  if (!text) {
+    return ['🌾 AGROVET SUPPLIES', 'Your Trusted Agricultural Partner', '📍 Kerugoya, Kirinyaga County', '📞 Contact: +254-XXX-XXXX']
+  }
+  return text.split(/\n+/).map(line => line.trim()).filter(Boolean)
+})
+
+const footerLines = computed(() => {
+  const text = (printerSettings.value.footer_message || '').trim()
+  if (!text) {
+    return ['🙏 Thank you for your business!', 'Return policy: 7 days with receipt', '💚 Quality products, reliable service']
+  }
+  return text.split(/\n+/).map(line => line.trim()).filter(Boolean)
+})
+
+const showDiscountsFlag = computed(() => printerSettings.value.show_discounts !== false)
+
 // Computed properties
+const categories = computed(() => {
+  const cats = new Set()
+  products.value.forEach(p => {
+    if (p.category) cats.add(p.category)
+  })
+  return Array.from(cats).sort()
+})
+
 const filteredProducts = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return products.value
+  let filtered = products.value
+  
+  // Search filter
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase().trim()
+    filtered = filtered.filter(product => 
+      product.name.toLowerCase().includes(query) ||
+      (product.sku && product.sku.toLowerCase().includes(query)) ||
+      (product.category && product.category.toLowerCase().includes(query)) ||
+      product.price.toString().includes(query)
+    )
   }
   
-  const query = searchQuery.value.toLowerCase().trim()
-  return products.value.filter(product => 
-    product.name.toLowerCase().includes(query) ||
-    product.price.toString().includes(query)
-  )
+  // Category filter
+  if (categoryFilter.value) {
+    filtered = filtered.filter(p => p.category === categoryFilter.value)
+  }
+  
+  // Stock filter
+  if (stockFilter.value === 'in-stock') {
+    filtered = filtered.filter(p => p.stock_quantity > 10)
+  } else if (stockFilter.value === 'low-stock') {
+    filtered = filtered.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 10)
+  } else if (stockFilter.value === 'out-of-stock') {
+    filtered = filtered.filter(p => p.stock_quantity === 0)
+  }
+  
+  return filtered
 })
 
 const total = computed(() =>
   cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
 )
 
-const change = computed(() => {
-  return paymentForm.value.amountPaid - total.value
+const baseTotal = computed(() => Math.max(0, total.value - promoDiscount.value))
+
+const taxDue = computed(() => {
+  if (!defaultTaxConfig.value) return 0
+  const rate = Number(defaultTaxConfig.value.rate || 0) / 100
+  if (!rate) return 0
+  if (defaultTaxConfig.value.is_inclusive) {
+    return baseTotal.value - (baseTotal.value / (1 + rate))
+  }
+  return baseTotal.value * rate
+})
+
+const netTotal = computed(() => {
+  if (!defaultTaxConfig.value) return baseTotal.value
+  return defaultTaxConfig.value.is_inclusive
+    ? baseTotal.value
+    : baseTotal.value + taxDue.value
+})
+
+const change = computed(() => paymentForm.value.amountPaid - netTotal.value)
+const balanceDue = computed(() => Math.max(0, netTotal.value - paymentForm.value.amountPaid))
+
+const selectedCustomerData = computed(() => {
+  if (!selectedCustomerId.value) return null
+  return customers.value.find(c => c.id === parseInt(selectedCustomerId.value)) || null
+})
+
+const availableCredit = computed(() => {
+  if (!selectedCustomerData.value) return 0
+  const limit = selectedCustomerData.value.credit_limit || 0
+  const balance = selectedCustomerData.value.credit_balance || 0
+  return Math.max(0, limit - balance)
+})
+
+const isCreditPaymentEnabled = computed(() => {
+  return paymentMethods.value.some(pm => 
+    pm.name?.toLowerCase() === 'credit/invoice'
+  )
+})
+
+const creditBlockReason = computed(() => {
+  // Only show if cart has items and payment is less than total
+  if (cart.value.length === 0 || balanceDue.value <= 0) return ''
+
+  // Credit/Invoice payment not enabled - must pay full amount
+  if (!isCreditPaymentEnabled.value) {
+    return 'Credit/Invoice payments are not enabled. Please collect full payment.'
+  }
+
+  // Needs credit but no customer selected
+  if (!selectedCustomerData.value) {
+    return 'Payment is below total. Select a customer or collect full payment.'
+  }
+
+  const limit = selectedCustomerData.value.credit_limit || 0
+  const balance = selectedCustomerData.value.credit_balance || 0
+  const available = Math.max(0, limit - balance)
+
+  if (limit <= 0) {
+    return 'Customer is not credit worthy (credit limit is 0). Collect full payment or increase the limit.'
+  }
+
+  if (balanceDue.value > available) {
+    return `Customer would exceed credit limit. Available credit: Ksh ${available.toFixed(2)}, needed: Ksh ${balanceDue.value.toFixed(2)}.`
+  }
+
+  return ''
+})
+
+const hasActiveFilters = computed(() => {
+  return searchQuery.value.trim() !== '' || 
+         categoryFilter.value !== '' || 
+         stockFilter.value !== 'all'
 })
 
 const canProcessSale = computed(() => {
-  return cart.value.length > 0 && paymentForm.value.amountPaid >= total.value
+  if (cart.value.length === 0) return false
+  if (paymentForm.value.amountPaid >= netTotal.value) return true
+  if (!selectedCustomerId.value) return false
+  return !creditBlockReason.value // block if credit rules fail
 })
+
+const getPaymentIcon = (methodName) => {
+  const icons = {
+    'Cash': '💵',
+    'M-Pesa': '📱',
+    'Card': '💳',
+    'Bank Transfer': '🏦',
+    'Cheque': '📄',
+    'Mobile Money': '📱'
+  }
+  return icons[methodName] || '💰'
+}
 
 const changeClass = computed(() => {
   if (change.value < 0) return 'insufficient'
@@ -394,12 +684,18 @@ const changeIcon = computed(() => {
 })
 
 // Fetch products on mount
-onMounted(fetchProducts)
+onMounted(() => {
+  fetchProducts()
+  fetchCustomers()
+  fetchPaymentMethods()
+  fetchPrinterSettings()
+  fetchTaxConfigs()
+})
 
 async function fetchProducts() {
   loading.value = true
   try {
-    const res = await axios.get('http://localhost:8000/products')
+    const res = await axios.get('/products')
     products.value = res.data
     if (products.value.length === 0) {
       showAlert('No products available. Add products to start making sales.', 'info')
@@ -409,6 +705,59 @@ async function fetchProducts() {
     showAlert('Failed to load products. Please try again.', 'error')
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchCustomers() {
+  try {
+    const res = await axios.get('/customers')
+    customers.value = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : [])
+  } catch (err) {
+    console.error('❌ Failed to fetch customers', err)
+    console.error('Error details:', err.response?.data)
+    customers.value = []
+  }
+}
+
+async function fetchPaymentMethods() {
+  try {
+    const res = await axios.get('/api/payment-methods/enabled')
+    paymentMethods.value = Array.isArray(res.data) ? res.data : []
+    
+    // Set default payment method to first enabled method
+    if (paymentMethods.value.length > 0) {
+      paymentForm.value.paymentMethod = paymentMethods.value[0].name
+    }
+  } catch (err) {
+    console.warn('❌ Failed to fetch payment methods, using defaults', err)
+    // Fallback to defaults if API fails
+    paymentMethods.value = [
+      { id: 1, name: 'Cash', description: 'Cash payment' },
+      { id: 2, name: 'M-Pesa', description: 'Mobile money' }
+    ]
+  }
+}
+
+async function fetchPrinterSettings() {
+  try {
+    const res = await axios.get('/api/printer-settings')
+    printerSettings.value = res.data
+  } catch (err) {
+    console.warn('⚠️ Failed to load printer settings', err)
+  }
+}
+
+async function fetchTaxConfigs() {
+  try {
+    const res = await axios.get('/api/tax-configurations')
+    taxConfigs.value = Array.isArray(res.data) ? res.data : []
+    // Set default tax config (marked as is_default)
+    const defaultConfig = taxConfigs.value.find(t => t.is_default)
+    if (defaultConfig) {
+      defaultTaxConfig.value = defaultConfig
+    }
+  } catch (err) {
+    console.warn('⚠️ Failed to load tax configurations', err)
   }
 }
 
@@ -442,8 +791,8 @@ function getAlertIcon() {
   }
 }
 
-// Cart functions
-function addToCart(product) {
+// Cart functions with await
+async function addToCart(product) {
   if (product.stock_quantity === 0) {
     showAlert('This product is out of stock!', 'warning')
     return
@@ -462,34 +811,60 @@ function addToCart(product) {
     showAlert(`${product.name} added to cart`, 'success')
   }
   
+  await refreshPromotions()
+  
   // Auto-open cart on first item
   if (cart.value.length === 1) {
     cartOpen.value = true
   }
 }
 
-function removeFromCart(id) {
+function handleBarcodeEnter() {
+  const code = barcodeInput.value.trim()
+  if (!code) return
+  const match = products.value.find(p =>
+    (p.sku && p.sku.toString() === code) ||
+    p.id?.toString() === code
+  )
+  if (match) {
+    addToCart(match)
+  } else {
+    showAlert('No product found for that barcode/SKU', 'warning')
+  }
+  barcodeInput.value = ''
+}
+
+function clearFilters() {
+  searchQuery.value = ''
+  categoryFilter.value = ''
+  stockFilter.value = 'all'
+}
+
+async function removeFromCart(id) {
   const item = cart.value.find(item => item.id === id)
   if (item) {
     cart.value = cart.value.filter(item => item.id !== id)
     showAlert(`${item.name} removed from cart`, 'info')
+    await refreshPromotions()
   }
 }
 
-function increaseQuantity(item) {
+async function increaseQuantity(item) {
   const product = products.value.find(p => p.id === item.id)
   if (item.quantity >= product.stock_quantity) {
     showAlert('Stock limit reached!', 'warning')
     return
   }
   item.quantity++
+  await refreshPromotions()
 }
 
-function decreaseQuantity(item) {
+async function decreaseQuantity(item) {
   if (item.quantity > 1) {
     item.quantity--
+    await refreshPromotions()
   } else {
-    removeFromCart(item.id)
+    await removeFromCart(item.id)
   }
 }
 
@@ -513,14 +888,91 @@ function getStockClass(quantity) {
 function getSubmitButtonText() {
   if (cart.value.length === 0) return 'Add items to cart'
   if (paymentForm.value.amountPaid === 0) return 'Enter payment amount'
-  if (paymentForm.value.amountPaid < total.value) return 'Insufficient payment'
+  if (paymentForm.value.amountPaid < netTotal.value && !selectedCustomerId.value) return 'Select customer or pay full'
+  if (paymentForm.value.amountPaid < netTotal.value) return 'Process with credit'
   return 'Process Sale'
+}
+
+async function refreshPromotions() {
+  // Clear any pending refresh
+  if (promoRefreshTimeout.value) {
+    clearTimeout(promoRefreshTimeout.value)
+  }
+
+  if (!cart.value.length) {
+    promoDiscount.value = 0
+    appliedPromos.value = []
+    return
+  }
+
+  // Debounce promo calculation to avoid rapid API calls
+  return new Promise((resolve) => {
+    promoRefreshTimeout.value = setTimeout(async () => {
+      try {
+        const payload = {
+          cart_total: total.value,
+          cart_items: cart.value.map(item => ({
+            product_id: item.id,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          customer_id: selectedCustomerId.value || null
+        }
+        
+        console.log('🛒 Requesting promo calculation for cart:', payload)
+        
+        const res = await axios.post('/promotions/calculate-discount', payload)
+        
+        // Ensure we're getting the correct data structure
+        const promoData = res.data || {}
+        const newDiscount = Number(promoData.total_discount || 0)
+        const newPromos = Array.isArray(promoData.applicable_promotions) 
+          ? promoData.applicable_promotions 
+          : []
+        
+        // Only update if values changed to prevent unnecessary re-renders
+        if (promoDiscount.value !== newDiscount || 
+            JSON.stringify(appliedPromos.value) !== JSON.stringify(newPromos)) {
+          promoDiscount.value = newDiscount
+          appliedPromos.value = newPromos
+          
+          console.log('📊 Cart Promo Updated:', {
+            count: appliedPromos.value.length,
+            promos: appliedPromos.value,
+            totalDiscount: promoDiscount.value
+          })
+        }
+        
+        resolve()
+      } catch (err) {
+        console.error('❌ Promo calculation failed:', err)
+        console.error('Error details:', err.response?.data)
+        promoDiscount.value = 0
+        appliedPromos.value = []
+        resolve()
+      }
+    }, 500) // 500ms debounce delay
+  })
 }
 
 // Receipt functions
 function generateReceipt(saleResponse) {
   const now = new Date()
   const receiptNumber = `RCP-${Date.now().toString().slice(-8)}`
+  const discountAmount = Number(saleResponse.discount || 0)
+  const sale = saleResponse.sale ?? saleResponse
+  const taxAmount = Number(sale.tax || 0)
+  const taxConfig = sale.tax_configuration || sale.taxConfiguration || defaultTaxConfig.value || {}
+  const taxInclusive = Boolean(taxConfig.is_inclusive)
+  const netTotal = Number(sale.total || 0)
+  const amountPaid = Number(sale.amount_paid || paymentForm.value.amountPaid || 0)
+  const balanceDue = Math.max(0, netTotal - amountPaid)
+  
+  // Calculate subtotal from cart items (gross before discount and tax)
+  const grossTotal = cart.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  const subtotal = grossTotal
+  const showTaxes = printerSettings.value.show_taxes !== false
+  const taxLabel = taxConfig.name ? `${taxConfig.name} (${taxConfig.rate ?? 0}%${taxInclusive ? ' incl.' : ''})` : 'Tax'
   
   receiptData.value = {
     receiptNumber,
@@ -538,12 +990,18 @@ function generateReceipt(saleResponse) {
         total: (price * quantity).toFixed(2)
       }
     }),
-    subtotal: Number(total.value).toFixed(2),
-    total: Number(total.value).toFixed(2),
-    amountPaid: Number(paymentForm.value.amountPaid).toFixed(2),
-    change: Number(change.value).toFixed(2),
+    subtotal: subtotal.toFixed(2),
+    discount: discountAmount.toFixed(2),
+    taxAmount: taxAmount.toFixed(2),
+    total: netTotal.toFixed(2),
+    amountPaid: amountPaid.toFixed(2),
+    change: Math.max(0, amountPaid - netTotal).toFixed(2),
+    balanceDue: balanceDue.toFixed(2),
     notes: saleForm.value.notes,
-    saleId: saleResponse.id || 'N/A'
+    saleId: saleResponse.id || 'N/A',
+    promotions: saleResponse.applied_promotions || [],
+    taxLabel,
+    showTaxes
   }
   
   showReceipt.value = true
@@ -640,24 +1098,86 @@ function printReceipt() {
   }, 1000)
 }
 
+function connectPrinter() {
+  // Placeholder: in a real setup, you would probe available printers
+  printerConnected.value = true
+  showAlert('Printer connected (simulated).', 'info')
+}
+
+function testPrint() {
+  if (!printerConnected.value) {
+    showAlert('Connect a printer first.', 'warning')
+    return
+  }
+  if (!showReceipt.value) {
+    showAlert('Generate a receipt first, then test print.', 'info')
+    return
+  }
+  printReceipt()
+}
+
 // Submit sale
 async function submitSale() {
   if (!canProcessSale.value) {
     if (cart.value.length === 0) {
       showAlert('Add products to the cart before submitting a sale.', 'warning')
-    } else if (paymentForm.value.amountPaid < total.value) {
-      showAlert('Payment amount is insufficient.', 'warning')
+    } else if (paymentForm.value.amountPaid < netTotal.value && !selectedCustomerId.value) {
+      showAlert('Payment is below total. Select a customer to record the balance as credit or pay full amount.', 'warning')
+    } else if (creditBlockReason.value) {
+      showAlert(creditBlockReason.value, 'error')
     }
     return
   }
 
   submitting.value = true
   try {
+    await refreshPromotions()
+
+    // Credit handling prompt when payment is less than total
+    const balance = Math.max(0, netTotal.value - paymentForm.value.amountPaid)
+    let applyCredit = false
+    if (balance > 0) {
+      if (!selectedCustomerId.value) {
+        showAlert('Payment is below total. Select a customer or pay full amount.', 'warning')
+        submitting.value = false
+        return
+      }
+      
+      // Check customer credit limit BEFORE prompting
+      const selectedCustomer = customers.value.find(c => c.id === parseInt(selectedCustomerId.value))
+      if (selectedCustomer) {
+        const currentCredit = selectedCustomer.credit_balance || 0
+        const creditLimit = selectedCustomer.credit_limit || 0
+        const proposedCredit = currentCredit + balance
+        
+        // Block sale if credit limit would be exceeded
+        if (creditLimit > 0 && proposedCredit > creditLimit) {
+          const exceedsBy = (proposedCredit - creditLimit).toFixed(2)
+          const availableCredit = Math.max(0, creditLimit - currentCredit)
+          const message = `🚫 SALE BLOCKED - CREDIT LIMIT EXCEEDED!\n\nCustomer: ${selectedCustomer.name}\nCurrent Balance: Ksh ${currentCredit.toFixed(2)}\nCredit Limit: Ksh ${creditLimit.toFixed(2)}\nAvailable Credit: Ksh ${availableCredit.toFixed(2)}\n\nThis sale requires: Ksh ${balance.toFixed(2)} credit\nWould exceed limit by: Ksh ${exceedsBy}\n\n✅ Solutions:\n1. Increase credit limit in Accounts Management\n2. Customer pays at least Ksh ${(paymentForm.value.amountPaid + parseFloat(exceedsBy)).toFixed(2)}\n3. Reduce cart items`
+          showAlert(message, 'error')
+          submitting.value = false
+          return // Block the sale completely
+        }
+      }
+      
+      // Only prompt if credit limit check passed
+      const confirmCredit = window.confirm(`Payment is short by Ksh ${balance.toFixed(2)}. Add this balance to the customer account as credit?`)
+      if (!confirmCredit) {
+        submitting.value = false
+        return
+      }
+      applyCredit = true
+    }
+
     const payload = {
-      customer_name: saleForm.value.customer_name || null,
-      notes: saleForm.value.notes || null,
+      customer_id: selectedCustomerId.value || null,
+      payment_method: paymentForm.value.paymentMethod,
+      tax_configuration_id: defaultTaxConfig.value?.id || null,
+      discount: promoDiscount.value,
+      tax: defaultTaxConfig.value?.rate || 0,
       amount_paid: paymentForm.value.amountPaid,
-      change_given: change.value,
+      apply_credit: applyCredit,
       items: cart.value.map(item => ({
         product_id: item.id,
         quantity: item.quantity,
@@ -665,12 +1185,24 @@ async function submitSale() {
       }))
     }
 
-    console.log('📤 Submitting sale payload:', payload)
+    console.log('📤 Submitting sale with tax config:', payload)
 
-    const res = await axios.post('http://localhost:8000/sales', payload)
+  const res = await axios.post('/api/sales', payload)
+    // Sync cart-side promo view with server-calculated promos/discounts (so cart matches receipt)
+    if (res.data) {
+      const serverDiscount = Number(res.data.discount ?? res.data.sale?.discount ?? promoDiscount.value ?? 0)
+      const serverPromos = res.data.applied_promotions || res.data.sale?.applied_promotions
+      promoDiscount.value = serverDiscount
+      appliedPromos.value = Array.isArray(serverPromos) ? serverPromos : appliedPromos.value
+    }
     console.log('✅ Sale recorded:', res.data)
 
-    showAlert('Sale processed successfully!', 'success')
+    // Show success message with credit info if applicable
+    if (applyCredit && balance > 0) {
+      showAlert(`Sale processed! Ksh ${balance.toFixed(2)} added to customer credit balance.`, 'success')
+    } else {
+      showAlert('Sale processed successfully!', 'success')
+    }
 
     // Generate and show receipt
     generateReceipt(res.data)
@@ -678,13 +1210,22 @@ async function submitSale() {
     // Reset cart and forms
     cart.value = []
     cartOpen.value = false
+    selectedCustomerId.value = ''
     saleForm.value.customer_name = ''
     saleForm.value.notes = ''
     paymentForm.value.amountPaid = 0
+    paymentForm.value.paymentMethod = 'Cash'
     await fetchProducts()
   } catch (err) {
+    const apiMsg = err.response?.data?.message || err.response?.data?.error
+    const friendly = apiMsg && typeof apiMsg === 'string'
+      ? apiMsg
+      : 'Sale could not be processed right now. Please try again.'
+
+    // Log full error for debugging while keeping the user alert friendly
     console.error('❌ Sale submission failed:', err.response?.data || err.message)
-    showAlert('Sale failed: ' + (err.response?.data?.message || err.message), 'error')
+
+    showAlert(friendly, 'error')
   } finally {
     submitting.value = false
   }
@@ -881,6 +1422,117 @@ async function submitSale() {
 .stat-label {
   font-size: 0.85rem;
   opacity: 0.9;
+}
+
+/* Barcode Scan */
+.barcode-scan {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.barcode-icon {
+  position: absolute;
+  left: 1rem;
+  color: #667eea;
+  font-size: 1.2rem;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.barcode-input {
+  width: 250px;
+  padding: 0.875rem 1rem 0.875rem 2.8rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 1rem;
+  background: white;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.barcode-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Filters Bar */
+.filters-bar {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  margin: 0 2rem 1.5rem 2rem;
+  padding: 1.5rem 2rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 200px;
+}
+
+.filter-group label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4a5568;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-group label i {
+  color: #667eea;
+}
+
+.filter-select {
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 1rem;
+  background: white;
+  color: #2d3748;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.filter-select:hover {
+  border-color: #cbd5e0;
+}
+
+.clear-filters-btn {
+  margin-left: auto;
+  background: linear-gradient(135deg, #f56565, #e53e3e);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 10px rgba(245, 101, 101, 0.3);
+}
+
+.clear-filters-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(245, 101, 101, 0.4);
 }
 
 /* Main Content */
@@ -1206,7 +1858,7 @@ async function submitSale() {
   gap: 0.5rem;
 }
 
-.qty-btn {
+ qty-btn {
   width: 28px;
   height: 28px;
   border: none;
@@ -1221,7 +1873,7 @@ async function submitSale() {
   font-size: 0.75rem;
 }
 
-.qty-btn:hover {
+ qty-btn:hover {
   background: #cbd5e0;
 }
 
@@ -1281,6 +1933,59 @@ async function submitSale() {
   margin-top: 0.5rem;
 }
 
+/* Applied Promotions Section */
+.applied-promos-section {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #38bdf8;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.promo-header {
+  font-weight: 600;
+  color: #0369a1;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.promo-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.5rem;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.promo-name {
+  color: #0c4a6e;
+  font-weight: 500;
+  flex: 1;
+}
+
+.promo-discount {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.promo-item.muted {
+  color: #0f172a;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.promo-total {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #38bdf8;
+  color: #0369a1;
+}
+
 /* Payment Section */
 .payment-section {
   border-top: 2px solid #e2e8f0;
@@ -1321,13 +2026,16 @@ async function submitSale() {
 }
 
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
   width: 100%;
   padding: 0.75rem;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
   font-size: 0.95rem;
   transition: all 0.3s ease;
+  background: white;
+  color: #2d3748;
 }
 
 .amount-input input {
@@ -1335,10 +2043,16 @@ async function submitSale() {
 }
 
 .form-group input:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+.form-group select:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.payment-method-select {
+  cursor: pointer;
+  font-weight: 500;
 }
 
 /* Change Display */
@@ -1388,6 +2102,71 @@ async function submitSale() {
   font-weight: 700;
 }
 
+/* Credit Status Info */
+.credit-status-info {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f0f9ff;
+  border-radius: 10px;
+  border: 1px solid #bfdbfe;
+}
+
+.credit-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.credit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+}
+
+.credit-label {
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.credit-value {
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.credit-value.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.credit-value.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.credit-value.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.credit-value.info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.limit-warning {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #991b1b;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* Checkout Button */
 .checkout-btn {
   width: 100%;
@@ -1417,6 +2196,23 @@ async function submitSale() {
   color: #a0aec0;
   cursor: not-allowed;
   transform: none;
+}
+
+.credit-block-msg {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.credit-block-msg i {
+  margin-top: 2px;
 }
 
 .checkout-btn.processing {
@@ -1655,6 +2451,22 @@ async function submitSale() {
   margin-top: 1.5rem;
 }
 
+.receipt-credit-note {
+  text-align: center;
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border-radius: 6px;
+  border: 1px dashed #f59e0b;
+}
+
+.receipt-credit-note p {
+  margin: 0;
+  font-size: 13px;
+  color: #92400e;
+  font-weight: 500;
+}
+
 .thank-you {
   font-weight: bold;
   font-size: 16px;
@@ -1770,18 +2582,43 @@ async function submitSale() {
   .header-right {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
   }
   
   .search-input {
-    width: 200px;
+    width: 100%;
+    max-width: 250px;
+  }
+
+  .barcode-input {
+    width: 100%;
+    max-width: 200px;
+  }
+  
+  .filters-bar {
+    margin: 0 1rem 1rem 1rem;
+    padding: 1rem;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    min-width: 100%;
+  }
+
+  .clear-filters-btn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
   }
   
   .pos-main {
     padding: 0 1rem;
+    height: auto;
   }
   
   .products-grid {
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 1rem;
   }
   
@@ -1796,12 +2633,73 @@ async function submitSale() {
 }
 
 @media (max-width: 480px) {
+  .pos-header {
+    margin: 0.5rem;
+    padding: 1rem;
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+  }
+
+  .page-subtitle {
+    font-size: 0.9rem;
+  }
+
+  .header-right {
+    gap: 0.75rem;
+  }
+
+  .filters-bar {
+    margin: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .filter-group label {
+    font-size: 0.8rem;
+  }
+
+  .filter-select {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .products-section {
+    padding: 1rem;
+  }
+
   .products-grid {
     grid-template-columns: 1fr;
+    gap: 0.75rem;
   }
   
-  .search-input {
-    width: 150px;
+  .product-card {
+    padding: 1rem;
+  }
+  
+  .product-name {
+    font-size: 1rem;
+  }
+
+  .search-input,
+  .barcode-input {
+    width: 100%;
+    max-width: none;
+    font-size: 0.9rem;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+  }
+
+  .stats-mini {
+    padding: 0.75rem 1rem;
+    min-width: 60px;
+  }
+
+  .stat-number {
+    font-size: 1.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.75rem;
   }
   
   .cart-item {
@@ -1812,6 +2710,11 @@ async function submitSale() {
   
   .item-controls {
     justify-content: center;
+  }
+
+  .checkout-btn {
+    padding: 0.875rem;
+    font-size: 1rem;
   }
 }
 

@@ -13,41 +13,65 @@
         <div v-if="step === 1">
           <h2 class="form-title">Step 1: Account Details</h2>
           <div class="form-group">
-            <label for="email">Email</label>
+            <label for="email" :class="{'floating': form.email}">Email</label>
             <input id="email" v-model="form.email" type="email" required />
           </div>
           <div class="form-group">
-            <label for="password">Password</label>
+            <label for="password" :class="{'floating': form.password}">Password</label>
             <input id="password" v-model="form.password" type="password" required />
           </div>
           <div class="form-group">
-            <label for="confirmPassword">Confirm Password</label>
+            <label for="confirmPassword" :class="{'floating': form.confirmPassword}">Confirm Password</label>
             <input id="confirmPassword" v-model="form.confirmPassword" type="password" required />
           </div>
         </div>
         <div v-else-if="step === 2">
           <h2 class="form-title">Step 2: Business Details</h2>
           <div class="form-group">
-            <label for="businessName">Business Name</label>
+            <label for="businessName" :class="{'floating': form.businessName}">Business Name</label>
             <input id="businessName" v-model="form.businessName" type="text" required />
           </div>
           <div class="form-group">
-            <label for="category">Business Category</label>
+            <label for="category" :class="{'floating': form.category}">Business Category</label>
             <input id="category" v-model="form.category" type="text" required />
           </div>
           <div class="form-group">
-            <label for="phone">Phone Number</label>
+            <label for="kraPin" :class="{'floating': form.kraPin}">KRA PIN</label>
+            <input id="kraPin" v-model="form.kraPin" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="phone" :class="{'floating': form.phone}">Phone Number</label>
             <input id="phone" v-model="form.phone" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="address" :class="{'floating': form.address}">Address</label>
+            <input id="address" v-model="form.address" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="city" :class="{'floating': form.city}">City/Town</label>
+            <input id="city" v-model="form.city" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="county" :class="{'floating': form.county}">County</label>
+            <input id="county" v-model="form.county" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="zipCode" :class="{'floating': form.zipCode}">Postal/Zip Code</label>
+            <input id="zipCode" v-model="form.zipCode" type="text" />
+          </div>
+          <div class="form-group">
+            <label for="country" :class="{'floating': form.country}">Country</label>
+            <input id="country" v-model="form.country" type="text" required />
           </div>
         </div>
         <div v-else-if="step === 3">
           <h2 class="form-title">Step 3: Owner Details</h2>
           <div class="form-group">
-            <label for="ownerName">Owner Name</label>
+            <label for="ownerName" :class="{'floating': form.ownerName}">Owner Name</label>
             <input id="ownerName" v-model="form.ownerName" type="text" required />
           </div>
           <div class="form-group">
-            <label for="ownerPosition">Position</label>
+            <label for="ownerPosition" :class="{'floating': form.ownerPosition}">Position</label>
             <input id="ownerPosition" v-model="form.ownerPosition" type="text" required />
           </div>
         </div>
@@ -77,7 +101,13 @@ const form = ref({
   confirmPassword: '',
   businessName: '',
   category: '',
+  kraPin: '',
   phone: '',
+  address: '',
+  city: '',
+  county: '',
+  zipCode: '',
+  country: '',
   ownerName: '',
   ownerPosition: ''
 })
@@ -88,7 +118,7 @@ function nextStep() {
     showAlert('Please fill all fields and ensure passwords match.', 'error')
     return
   }
-  if (step.value === 2 && (!form.value.businessName || !form.value.category || !form.value.phone)) {
+  if (step.value === 2 && (!form.value.businessName || !form.value.category || !form.value.kraPin || !form.value.phone || !form.value.address || !form.value.city || !form.value.county || !form.value.country)) {
     showAlert('Please fill all business details.', 'error')
     return
   }
@@ -115,7 +145,13 @@ async function handleSignup() {
         password: form.value.password,
         business_name: form.value.businessName,
         category: form.value.category,
+        kra_pin: form.value.kraPin,
         phone: form.value.phone,
+        address: form.value.address,
+        city: form.value.city,
+        county: form.value.county,
+        zip_code: form.value.zipCode,
+        country: form.value.country,
         owner_name: form.value.ownerName,
         owner_position: form.value.ownerPosition
       })
@@ -193,16 +229,33 @@ async function handleSignup() {
   margin-bottom: 1rem;
 }
 .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  position: relative;
+  margin-bottom: 1.5rem;
 }
 .form-group label {
   font-weight: 500;
   color: #4a5568;
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  background: #fff;
+  padding: 0 0.25rem;
+  pointer-events: none;
+  transition: 0.2s;
+  font-size: 1rem;
+}
+.form-group input:focus + label,
+.form-group input:not(:placeholder-shown) + label,
+.form-group label.floating {
+  top: -0.7rem;
+  left: 0.8rem;
+  font-size: 0.85rem;
+  color: #667eea;
+  background: #fff;
+  z-index: 2;
 }
 .form-group input {
-  padding: 0.75rem 1rem;
+  padding: 1.25rem 1rem 0.5rem 1rem;
   border: 2px solid #e2e8f0;
   border-radius: 10px;
   font-size: 1rem;
