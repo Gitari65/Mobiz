@@ -12,13 +12,13 @@ class InvoiceItem extends Model
         'description',
         'quantity',
         'unit_price',
-        'total',
+        'total_price',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
-        'total' => 'decimal:2',
+        'total_price' => 'decimal:2',
     ];
 
     public function invoice()

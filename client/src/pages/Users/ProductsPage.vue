@@ -2017,8 +2017,7 @@ export default {
         cost_price: '',
         price: '',
         stock_quantity: '',
-        prices: {},
-        empties: []
+        prices: {}
       }]
       this.csvFile = null
       this.csvData = []
@@ -2342,17 +2341,25 @@ export default {
   padding: 1rem 1.5rem;
   color: white;
   text-align: center;
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
 }
 
 .stat-number {
   display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  letter-spacing: -0.5px;
 }
 
 .stat-label {
   font-size: 0.85rem;
-  opacity: 0.9;
+  opacity: 0.95;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  margin-top: 0.25rem;
 }
 
 .btn-add-product {
@@ -3200,7 +3207,6 @@ export default {
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
   margin: 0 auto;
 }
@@ -3390,8 +3396,11 @@ export default {
 
 .stat-label {
   font-size: 0.875rem;
-  color: #718096;
+  opacity: 0.95;
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
+  letter-spacing: 0.5px;
+  margin-top: 0.25rem;
 }
 
 .products-review {

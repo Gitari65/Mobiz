@@ -7,36 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 class Invoice extends Model
 {
     protected $fillable = [
-        'invoice_number',
-        'company_id',
-        'customer_id',
-        'user_id',
-        'invoice_date',
-        'due_date',
-        'subtotal',
-        'tax',
-        'discount',
-        'total',
-        'paid_amount',
-        'balance',
-        'status',
-        'notes',
+        'invoice_number', 'type', 'supplier_id', 'customer_id', 'company_id', 'user_id',
+        'invoice_date', 'due_date', 'subtotal', 'tax', 'discount', 'total',
+        'paid_amount', 'balance', 'status', 'notes'
     ];
 
-    protected $casts = [
-        'invoice_date' => 'date',
-        'due_date' => 'date',
-        'subtotal' => 'decimal:2',
-        'tax' => 'decimal:2',
-        'discount' => 'decimal:2',
-        'total' => 'decimal:2',
-        'paid_amount' => 'decimal:2',
-        'balance' => 'decimal:2',
-    ];
-
-    public function company()
+    public function supplier()
     {
-        return $this->belongsTo(Company::class);
+        return $this->belongsTo(Supplier::class);
     }
 
     public function customer()
@@ -44,9 +22,9 @@ class Invoice extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function user()
+    public function company()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Company::class);
     }
 
     public function items()
@@ -54,9 +32,9 @@ class Invoice extends Model
         return $this->hasMany(InvoiceItem::class);
     }
 
-    public function payments()
+    public function creator()
     {
-        return $this->hasMany(InvoicePayment::class);
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public static function generateInvoiceNumber()

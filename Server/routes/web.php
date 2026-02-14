@@ -26,6 +26,8 @@ Route::delete('/companies/{id}/reject', [CompanyController::class, 'reject']);
 
 
 
+
+
 // AUTHENTICATION & USER MANAGEMENT
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -197,6 +199,15 @@ Route::get('/companies', [AuthController::class, 'listCompanies']);
 Route::patch('/companies/{id}/activate', [AuthController::class, 'activateCompany']);
 Route::patch('/companies/{id}/deactivate', [AuthController::class, 'deactivateCompany']);
 
+//Reports
+// Route::middleware('auth:sanctum')->prefix('/reports')->group(function () {
+//     Route::get('/sales', [ReportController::class, 'salesReport']);
+//     Route::get('/inventory', [ReportController::class, 'inventoryReport']);
+//     Route::get('/transfers', [ReportController::class, 'transferReport']);
+//     Route::get('analytics/overview', [DashboardController::class, 'analyticsOverview']);
+// });
+
+
 // SUPERUSER API ROUTES
 Route::prefix('api/superuser')->group(function () {
   Route::get('/businesses', function () {
@@ -309,6 +320,9 @@ Route::get('/products/low-stock', [ProductController::class, 'getLowStockProduct
 Route::get('/products/csv-template', [ProductController::class, 'downloadCSVTemplate']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
 
+// DASHBOARD STATS - Add this missing endpoint
+Route::get('/dashboard-stats', [DashboardController::class, 'getDashboardStats']);
+
 // PRODUCT CATEGORIES (auth required; admin/superuser for mutations handled in controller)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/product-categories', [\App\Http\Controllers\ProductCategoryController::class, 'index']);
@@ -358,112 +372,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/price-groups/{id}', [\App\Http\Controllers\PriceGroupController::class, 'destroy']);
 });
 
-Route::middleware(['auth:sanctum'])->group(function () {
-    Route::post('/products', [ProductController::class, 'store']);
-    Route::post('/products/bulk', [ProductController::class, 'storeBulk']);
-    Route::post('/products/import-csv', [ProductController::class, 'importCSV']);
-    Route::post('/products/transfer', [ProductController::class, 'transferStock']);
-    Route::put('/products/{id}', [ProductController::class, 'update']);
-    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
-
-    // Customer Routes
-    Route::get('/customers', [CustomerController::class, 'index']);
-    Route::post('/customers', [CustomerController::class, 'store']);
-    Route::get('/customers/{id}', [CustomerController::class, 'show']);
-    Route::put('/customers/{id}', [CustomerController::class, 'update']);
-    Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
-    Route::post('/customers/batch', [CustomerController::class, 'batchImport']);
-
-    // Supplier Routes
-    Route::get('/suppliers', [SupplierController::class, 'index']);
-    Route::post('/suppliers', [SupplierController::class, 'store']);
-    Route::get('/suppliers/{id}', [SupplierController::class, 'show']);
-    Route::put('/suppliers/{id}', [SupplierController::class, 'update']);
-    Route::delete('/suppliers/{id}', [SupplierController::class, 'destroy']);
-    Route::post('/suppliers/batch', [SupplierController::class, 'batchImport']);
-
-    // Warehouse Transfers - Get transfer history with full details
-    Route::get('/warehouse-transfers', function () {
-        $user = Auth::user();
-        
-        $transfers = \App\Models\WarehouseTransfer::with(['product', 'fromWarehouse', 'toWarehouse', 'user'])
-            ->where('company_id', $user->company_id)
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($transfer) {
-                return [
-                    'id' => $transfer->id,
-                    'transfer_number' => $transfer->transfer_number,
-                    'product_id' => $transfer->product_id,
-                    'product_name' => $transfer->product?->name,
-                    'from_warehouse_id' => $transfer->from_warehouse_id,
-                    'from_warehouse_name' => $transfer->fromWarehouse?->name,
-                    'to_warehouse_id' => $transfer->to_warehouse_id,
-                    'to_warehouse_name' => $transfer->toWarehouse?->name,
-                    'quantity' => $transfer->quantity,
-                    'transfer_type' => $transfer->transfer_type,
-                    'reason' => $transfer->reason,
-                    'reference' => $transfer->reference,
-                    'external_target' => $transfer->external_target,
-                    'note' => $transfer->note,
-                    'user_id' => $transfer->user_id,
-                    'user_name' => $transfer->user?->name,
-                    'created_at' => $transfer->created_at,
-                    'updated_at' => $transfer->updated_at,
-                ];
-            });
-        
-        return response()->json($transfers);
+// Alias /promotions to /api/promotions for authenticated API calls
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/promotions', function (\Illuminate\Http\Request $request) {
+        return app()->call('\App\Http\Controllers\PromotionController@index', ['request' => $request]);
     });
-
-    // Warehouses (admin only)
-    Route::post('/warehouses', [ProductController::class, 'storeWarehouse']);
-    Route::put('/warehouses/{id}', [ProductController::class, 'updateWarehouse']);
-    Route::delete('/warehouses/{id}', [ProductController::class, 'destroyWarehouse']);
+    Route::post('/promotions', function (\Illuminate\Http\Request $request) {
+        return app()->call('\App\Http\Controllers\PromotionController@store', ['request' => $request]);
+    });
+    Route::put('/promotions/{id}', function ($id, \Illuminate\Http\Request $request) {
+        return app()->call('\App\Http\Controllers\PromotionController@update', ['id' => $id, 'request' => $request]);
+    });
+    Route::delete('/promotions/{id}', function ($id) {
+        return app()->call('\App\Http\Controllers\PromotionController@destroy', ['id' => $id]);
+    });
+    Route::post('/promotions/{id}/toggle', function ($id) {
+        return app()->call('\App\Http\Controllers\PromotionController@toggleStatus', ['id' => $id]);
+    });
 });
-
-// SALES
-Route::post('/sales', [SaleController::class, 'store']);
-Route::get('/sales', [SaleController::class, 'index']);
-Route::get('/sales/{id}', [SaleController::class, 'show']);
-
-// DASHBOARD
-Route::get('/dashboard-stats', [DashboardController::class, 'getStats']);
-
-// PURCHASES
-Route::post('/purchases', [PurchaseController::class, 'store']);
-Route::get('/purchases', [PurchaseController::class, 'index']);
-
-// REPORTS
-Route::prefix('reports')->group(function () {
-    Route::get('/sales-overview', [ReportController::class, 'salesOverview']);
-    Route::get('/inventory-summary', [ReportController::class, 'inventorySummary']);
-    Route::get('/top-selling-products', [ReportController::class, 'topSellingProducts']);
-});
-
-// REPORTS API (with authentication and date filters)
-Route::middleware('auth:sanctum')->prefix('api/reports')->group(function () {
-    Route::get('/sales', [ReportController::class, 'salesReport']);
-    Route::get('/transfers', [ReportController::class, 'transfersReport']);
-    Route::get('/analytics', [ReportController::class, 'analyticsReport']);
-    Route::get('/promotions', [ReportController::class, 'promotionsReport']);
-    Route::get('/customers', [ReportController::class, 'customersReport']);
-});
-
-// EXPENSES
-Route::get('/expenses', [ExpenseController::class, 'index']);
-Route::get('/expenses/categories', [ExpenseController::class, 'getCategories']);
-Route::get('/expenses/payment-methods', [ExpenseController::class, 'getPaymentMethods']);
-Route::get('/expenses/dashboard', [ExpenseController::class, 'getDashboard']);
-Route::get('/expenses/profit-loss', [ExpenseController::class, 'getProfitLoss']);
-Route::get('/expenses/export', [ExpenseController::class, 'export']);
-Route::get('/expenses/{id}', [ExpenseController::class, 'show']);
-Route::post('/expenses', [ExpenseController::class, 'store']);
-Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
-Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
-Route::patch('/expenses/{id}/approve', [ExpenseController::class, 'approve']);
-Route::patch('/expenses/{id}/reject', [ExpenseController::class, 'reject']);
-Route::patch('/expenses/{id}/mark-paid', [ExpenseController::class, 'markAsPaid']);
 
 // Test route for expense system
 Route::get('/test-expenses', function () {
@@ -519,7 +445,7 @@ Route::middleware('auth:sanctum')->get('/dashboard/overview', [\App\Http\Control
 // ADMIN API ENDPOINTS (for admin pages)
 Route::middleware(['auth:sanctum'])->group(function () {
     // Get current authenticated user
-    Route::get('/api/user', function () {
+    Route::get('/user', function () {
         return response()->json(auth()->user()->load('company', 'role'));
     });
 
@@ -689,33 +615,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         return response()->json($methods);
     });
-
+//customer supplier routes
+    Route::get('/customers', [CustomerController::class, 'index']);
+    Route::post('/customers', [CustomerController::class, 'store']);    
+    Route::get('/suppliers', [SupplierController::class, 'index']); 
+    Route::post('/suppliers', [SupplierController::class, 'store']);
     // Get enabled payment methods for current company (for cashiers/POS)
-    Route::get('/api/payment-methods/enabled', function () {
-        $user = auth()->user();
-        if (!$user || !$user->company_id) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        
-        // Get only enabled payment methods for this company
-        $enabledMethods = \DB::table('company_payment_methods')
-            ->join('payment_methods', 'company_payment_methods.payment_method_id', '=', 'payment_methods.id')
-            ->where('company_payment_methods.company_id', $user->company_id)
-            ->where('company_payment_methods.is_enabled', true)
-            ->where('payment_methods.is_active', true)
-            ->select('payment_methods.id', 'payment_methods.name', 'payment_methods.description')
-            ->get();
-        
-        // If no methods configured, return defaults
-        if ($enabledMethods->isEmpty()) {
-            $enabledMethods = \App\Models\PaymentMethod::where('is_active', true)
-                ->whereIn('name', ['Cash', 'M-Pesa'])
-                ->select('id', 'name', 'description')
-                ->get();
-        }
-        
-        return response()->json($enabledMethods);
-    });
+    Route::get('/payment-methods/enabled', [\App\Http\Controllers\PaymentMethodController::class, 'enabled']);
 
     Route::post('/payment-methods/{id}/toggle', function ($id) {
         $user = auth()->user();
@@ -753,4 +659,53 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         return response()->json(['message' => 'Payment method toggled successfully']);
     });
+});
+
+// --- REPORTS API ENDPOINTS (for ReportPage.vue) ---
+Route::middleware('auth:sanctum')->group(function () {
+    // Sales Report - Call actual ReportController method
+    Route::get('/api/reports/sales', [ReportController::class, 'salesReport']);
+
+    // Transfers Report - Call actual ReportController method
+    Route::get('/reports/transfers', [ReportController::class, 'transfersReport']);
+
+    // Analytics Report - Call actual ReportController method
+    Route::get('/reports/analytics', [ReportController::class, 'analyticsReport']);
+
+    // Promotions Report - Call actual ReportController method
+    Route::get('/reports/promotions', [ReportController::class, 'promotionsReport']);
+
+    // Customers Report - Call actual ReportController method
+    Route::get('/reports/customers', [ReportController::class, 'customersReport']);
+
+    // Suppliers Report - Call actual ReportController method
+    Route::get('/reports/suppliers', [ReportController::class, 'suppliersReport']);
+
+    // DSRS Excel export - Call actual ReportController method
+    Route::get('/api/reports/sales/dsrs-export', [ReportController::class, 'exportDSRS']);
+    
+    // Sales Summary PDF export - Call actual ReportController method
+    Route::get('/api/reports/sales/summary-pdf', [ReportController::class, 'exportSalesSummaryPdf']);
+    
+    // Sales Summary Excel export - Call actual ReportController method
+    Route::get('/api/reports/sales/summary-excel', [ReportController::class, 'exportSalesSummaryExcel']);
+
+    // Transfers Excel export - Call actual ReportController method
+    Route::get('/api/reports/transfers/export-excel', [ReportController::class, 'exportTransfersExcel']);
+
+    // Promotions CSV export - Call actual ReportController method
+    Route::get('/api/reports/promotions/export-csv', [ReportController::class, 'exportPromotionsCsv']);
+
+    // Customers CSV export - Call actual ReportController method
+    Route::get('/api/reports/customers/export-csv', [ReportController::class, 'exportCustomersCsv']);
+
+    // Suppliers CSV export - Call actual ReportController method
+    Route::get('/api/reports/suppliers/export-csv', [ReportController::class, 'exportSuppliersCsv']);
+
+    // Invoice CRUD
+    Route::get('/invoices', [\App\Http\Controllers\InvoiceController::class, 'index']);
+    Route::post('/invoices', [\App\Http\Controllers\InvoiceController::class, 'store']);
+    Route::get('/invoices/{id}', [\App\Http\Controllers\InvoiceController::class, 'show']);
+    Route::put('/invoices/{id}', [\App\Http\Controllers\InvoiceController::class, 'update']);
+    Route::delete('/invoices/{id}', [\App\Http\Controllers\InvoiceController::class, 'destroy']);
 });

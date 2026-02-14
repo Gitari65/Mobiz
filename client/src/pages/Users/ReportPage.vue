@@ -11,9 +11,9 @@
               <i class="fas fa-clock"></i> Last updated: {{ formatDate(lastFetchTime) }}
             </small>
           </div>
-          <button @click="refreshAllReports" class="refresh-btn" :disabled="isLoading">
+          <button @click="reloadReports" class="refresh-btn" :disabled="isLoading">
             <i class="fas fa-sync-alt" :class="{ 'spinning': isLoading }"></i>
-            {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+            {{ isLoading ? 'Reloading...' : 'Reload' }}
           </button>
         </div>
       </div>
@@ -22,11 +22,11 @@
       <div class="filter-bar">
         <div class="filter-group">
           <label><i class="fas fa-calendar"></i> From</label>
-          <input v-model="filters.startDate" type="date" class="date-input" @change="applyFilters" />
+          <input v-model="filters.startDate" type="date" class="date-input" />
         </div>
         <div class="filter-group">
           <label><i class="fas fa-calendar"></i> To</label>
-          <input v-model="filters.endDate" type="date" class="date-input" @change="applyFilters" />
+          <input v-model="filters.endDate" type="date" class="date-input" />
         </div>
         <button @click="resetFilters" class="reset-btn"><i class="fas fa-times"></i> Reset</button>
       </div>
@@ -90,6 +90,16 @@
               </div>
             </div>
           </div>
+          <div class="report-actions">
+            <button class="download-btn excel" @click="downloadDSRS" :disabled="downloadingDSRS">
+              <i class="fas fa-file-excel"></i>
+              {{ downloadingDSRS ? 'Downloading...' : 'Download DSRS (Excel)' }}
+            </button>
+            <button class="download-btn excel" @click="downloadSalesSummary" :disabled="downloadingSummary">
+              <i class="fas fa-file-excel"></i>
+              {{ downloadingSummary ? 'Downloading...' : 'Download Sales Summary (Excel)' }}
+            </button>
+          </div>
           <div class="report-card">
             <div class="card-header"><h2 class="card-title"><i class="fas fa-receipt"></i> Sales Transactions</h2></div>
             <div class="table-wrapper">
@@ -130,6 +140,12 @@
               <div class="metric-icon">📤</div>
               <div class="metric-content"><h3>Items Out</h3><p class="metric-value">{{ reports.transfers.items_out || 0 }}</p><small>Items transferred</small></div>
             </div>
+          </div>
+          <div class="report-actions">
+            <button class="download-btn excel" @click="downloadTransfersReport" :disabled="downloadingTransfers">
+              <i class="fas fa-file-excel"></i>
+              {{ downloadingTransfers ? 'Downloading...' : 'Download Transfers (Excel)' }}
+            </button>
           </div>
           <div class="report-card">
             <div class="card-header"><h2 class="card-title"><i class="fas fa-exchange-alt"></i> Stock Transfers</h2></div>
@@ -194,6 +210,12 @@
               <div class="metric-content"><h3>Usage Count</h3><p class="metric-value">{{ reports.promotions.total_usage || 0 }}</p><small>Times applied</small></div>
             </div>
           </div>
+          <div class="report-actions">
+            <button class="download-btn excel" @click="downloadPromotionsReport" :disabled="downloadingPromotions">
+              <i class="fas fa-file-excel"></i>
+              {{ downloadingPromotions ? 'Downloading...' : 'Download Promotions (CSV)' }}
+            </button>
+          </div>
           <div class="report-card">
             <div class="card-header"><h2 class="card-title"><i class="fas fa-percent"></i> Promotions Activity</h2></div>
             <div class="table-wrapper">
@@ -203,6 +225,70 @@
                 <tbody>
                   <tr v-for="p in reports.promotions.list" :key="p.id">
                     <td class="name">{{ p.name }}</td><td><span class="badge-type">{{ formatPromoType(p.type) }}</span></td><td><span class="badge-scope">{{ formatPromoScope(p.scope) }}</span></td><td>{{ p.usage_count || 0 }}</td><td class="amount">Ksh {{ formatNumber(p.total_discount || 0) }}</td><td><span class="status" :class="p.is_active ? 'active' : 'inactive'">{{ p.is_active ? '✅' : '❌' }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Suppliers Tab -->
+        <div v-if="activeTab === 'suppliers'" class="tab-pane active">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">🏢</div>
+              <div class="metric-content">
+                <h3>Total Suppliers</h3>
+                <p class="metric-value">{{ reports.suppliers.total_suppliers || 0 }}</p>
+                <small>Registered</small>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📦</div>
+              <div class="metric-content">
+                <h3>Products Supplied</h3>
+                <p class="metric-value">{{ reports.suppliers.total_products_supplied || 0 }}</p>
+                <small>Unique products</small>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📝</div>
+              <div class="metric-content">
+                <h3>Recent Purchases</h3>
+                <p class="metric-value">{{ reports.suppliers.recent_purchases_count || 0 }}</p>
+                <small>Last 30 days</small>
+              </div>
+            </div>
+          </div>
+          <div class="report-actions">
+            <button class="download-btn excel" @click="downloadSuppliersReport" :disabled="downloadingSuppliers">
+              <i class="fas fa-file-excel"></i>
+              {{ downloadingSuppliers ? 'Downloading...' : 'Download Suppliers (CSV)' }}
+            </button>
+          </div>
+          <div class="report-card">
+            <div class="card-header"><h2 class="card-title"><i class="fas fa-truck"></i> Suppliers List</h2></div>
+            <div class="table-wrapper">
+              <div v-if="!reports.suppliers.list?.length" class="empty-state"><i class="fas fa-inbox"></i><p>No suppliers found</p></div>
+              <table v-else class="modern-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Contact Person</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Products Supplied</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in reports.suppliers.list" :key="s.id">
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.contact_person }}</td>
+                    <td>{{ s.email }}</td>
+                    <td>{{ s.phone }}</td>
+                    <td>{{ s.products_supplied }}</td>
+                    <td>{{ s.notes }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -230,6 +316,12 @@
               <div class="metric-content"><h3>Avg. Spend</h3><p class="metric-value">Ksh {{ formatNumber(reports.customers.avg_spend) }}</p><small>Per customer</small></div>
             </div>
           </div>
+          <div class="report-actions">
+            <button class="download-btn excel" @click="downloadCustomersReport" :disabled="downloadingCustomers">
+              <i class="fas fa-file-excel"></i>
+              {{ downloadingCustomers ? 'Downloading...' : 'Download Customers (CSV)' }}
+            </button>
+          </div>
           <div class="report-card">
             <div class="card-header"><h2 class="card-title"><i class="fas fa-star"></i> Top Customers</h2></div>
             <div class="table-wrapper">
@@ -242,6 +334,127 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Invoices Tab -->
+        <div v-if="activeTab === 'invoices'" class="tab-pane active">
+          <div class="report-actions">
+            <button class="add-btn" @click="showInvoiceModal = true">
+              <i class="fas fa-plus"></i> New Invoice
+            </button>
+          </div>
+          <div class="report-card">
+            <div class="card-header">
+              <h2 class="card-title"><i class="fas fa-file-invoice"></i> Invoices</h2>
+            </div>
+            <div class="table-wrapper">
+              <div v-if="loadingInvoices" class="empty-state"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+              <div v-else-if="!invoices.length" class="empty-state"><i class="fas fa-inbox"></i><p>No invoices found</p></div>
+              <table v-else class="modern-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Supplier/Customer</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Due Date</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="inv in invoices" :key="inv.id">
+                    <td>{{ inv.id }}</td>
+                    <td>{{ inv.type }}</td>
+                    <td>
+                      <span v-if="inv.type === 'purchase'">{{ inv.supplier?.name || '-' }}</span>
+                      <span v-else-if="inv.type === 'sale'">{{ inv.customer?.name || '-' }}</span>
+                      <span v-else>-</span>
+                    </td>
+                    <td>{{ inv.total | currency }}</td>
+                    <td>{{ inv.status }}</td>
+                    <td>{{ inv.due_date ? inv.due_date.substr(0,10) : '-' }}</td>
+                    <td>{{ inv.created_at ? inv.created_at.substr(0,10) : '-' }}</td>
+                    <td>
+                      <button @click="viewInvoice(inv)" title="View"><i class="fas fa-eye"></i></button>
+                      <button @click="deleteInvoice(inv)" title="Delete"><i class="fas fa-trash"></i></button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <!-- Invoice Modal -->
+          <div v-if="showInvoiceModal" class="modal-overlay">
+            <div class="modal">
+              <h3>{{ invoiceForm.id ? 'Edit Invoice' : 'New Invoice' }}</h3>
+              <form @submit.prevent="saveInvoice">
+                <label>Type
+                  <select v-model="invoiceForm.type" required>
+                    <option value="purchase">Purchase</option>
+                    <option value="sale">Sale</option>
+                    <option value="service">Service</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label v-if="invoiceForm.type === 'purchase'">Supplier
+                  <select v-model="invoiceForm.supplier_id" required>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                  </select>
+                </label>
+                <label v-if="invoiceForm.type === 'sale'">Customer
+                  <select v-model="invoiceForm.customer_id" required>
+                    <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </label>
+                <label>Due Date
+                  <input type="date" v-model="invoiceForm.due_date" />
+                </label>
+                <label>Notes
+                  <textarea v-model="invoiceForm.notes"></textarea>
+                </label>
+                <div>
+                  <h4>Items</h4>
+                  <div v-for="(item, idx) in invoiceForm.items" :key="idx" class="invoice-item-row">
+                    <select v-model="item.product_id" required>
+                      <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
+                    </select>
+                    <input type="number" v-model.number="item.quantity" min="1" placeholder="Qty" required style="width:60px" />
+                    <input type="number" v-model.number="item.unit_price" min="0" step="0.01" placeholder="Unit Price" required style="width:90px" />
+                    <button type="button" @click="removeInvoiceItem(idx)" v-if="invoiceForm.items.length > 1">✖</button>
+                  </div>
+                  <button type="button" @click="addInvoiceItem">Add Item</button>
+                </div>
+                <div class="modal-actions">
+                  <button type="submit">{{ invoiceForm.id ? 'Update' : 'Create' }}</button>
+                  <button type="button" @click="closeInvoiceModal">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          <!-- Invoice View Modal -->
+          <div v-if="viewingInvoice" class="modal-overlay">
+            <div class="modal">
+              <h3>Invoice #{{ viewingInvoice.id }}</h3>
+              <p><b>Type:</b> {{ viewingInvoice.type }}</p>
+              <p v-if="viewingInvoice.supplier"><b>Supplier:</b> {{ viewingInvoice.supplier.name }}</p>
+              <p v-if="viewingInvoice.customer"><b>Customer:</b> {{ viewingInvoice.customer.name }}</p>
+              <p><b>Status:</b> {{ viewingInvoice.status }}</p>
+              <p><b>Total:</b> {{ viewingInvoice.total | currency }}</p>
+              <p><b>Due Date:</b> {{ viewingInvoice.due_date }}</p>
+              <p><b>Notes:</b> {{ viewingInvoice.notes }}</p>
+              <h4>Items</h4>
+              <ul>
+                <li v-for="item in viewingInvoice.items" :key="item.id">
+                  {{ item.product?.name || item.description }} - Qty: {{ item.quantity }}, Unit: {{ item.unit_price | currency }}, Total: {{ item.total_price | currency }}
+                </li>
+              </ul>
+              <div class="modal-actions">
+                <button @click="viewingInvoice = null">Close</button>
+              </div>
             </div>
           </div>
         </div>
@@ -263,7 +476,9 @@ export default {
         { id: 'transfers', name: 'Transfers', icon: 'fas fa-exchange-alt' },
         { id: 'analytics', name: 'Analytics', icon: 'fas fa-chart-bar' },
         { id: 'promotions', name: 'Promotions', icon: 'fas fa-percent' },
-        { id: 'customers', name: 'Customers', icon: 'fas fa-users' }
+        { id: 'customers', name: 'Customers', icon: 'fas fa-users' },
+        { id: 'suppliers', name: 'Suppliers', icon: 'fas fa-truck' },
+        { id: 'invoices', name: 'Invoices', icon: 'fas fa-file-invoice' }
       ],
       filters: {
         startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
@@ -274,16 +489,23 @@ export default {
         transfers: { total_count: 0, items_in: 0, items_out: 0, list: [] },
         analytics: { total_products: 0, in_stock: 0, low_stock: 0, out_of_stock: 0, top_products: [], low_stock_items: [] },
         promotions: { active_count: 0, total_discount: 0, total_usage: 0, list: [] },
-        customers: { total_unique: 0, total_served: 0, walk_ins: 0, avg_spend: 0, top_customers: [] }
+        customers: { total_unique: 0, total_served: 0, walk_ins: 0, avg_spend: 0, top_customers: [] },
+        suppliers: { total_suppliers: 0, total_products_supplied: 0, recent_purchases_count: 0, list: [] }
       },
       // Cache system to prevent redundant API calls
       dataCache: {},
       cacheKey: '',
-      lastFetchTime: null
+      lastFetchTime: null,
+      downloadingDSRS: false,
+      downloadingSummary: false,
+      downloadingTransfers: false,
+      downloadingPromotions: false,
+      downloadingCustomers: false,
+      downloadingSuppliers: false,
     }
   },
   mounted() {
-    this.loadReports()
+    this.reloadReports()
   },
   methods: {
     // Generate cache key based on date filters
@@ -312,16 +534,8 @@ export default {
       console.log('✅ Data cached for:', key)
     },
     
-    async loadReports(forceRefresh = false) {
-      // Check cache first unless force refresh
-      if (!forceRefresh && this.isCached()) {
-        console.log('📦 Loading from cache...')
-        this.reports = this.getCachedData()
-        this.isLoading = false
-        return
-      }
-      
-      console.log('🌐 Fetching fresh data...')
+    async reloadReports() {
+      // Always fetch fresh data for current filters
       this.isLoading = true
       try {
         await Promise.all([
@@ -329,9 +543,9 @@ export default {
           this.fetchTransfersReport(),
           this.fetchAnalyticsReport(),
           this.fetchPromotionsReport(),
-          this.fetchCustomersReport()
+          this.fetchCustomersReport(),
+          this.fetchSuppliersReport()
         ])
-        
         // Cache the fetched data
         this.cacheData({ ...this.reports })
       } catch (err) {
@@ -341,47 +555,106 @@ export default {
       }
     },
     async fetchSalesReport() {
+      console.log('🔍 Fetching Sales Report', {
+        startDate: this.filters.startDate,
+        endDate: this.filters.endDate,
+      })
       try {
-        const res = await axios.get('/api/reports/sales', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        const res = await axios.get('/api/reports/sales', { 
+          params: { 
+            start_date: this.filters.startDate, 
+            end_date: this.filters.endDate 
+          } 
+        })
+        console.log('✅ Sales Report Received', res.data)
         this.reports.sales = res.data
       } catch (err) {
-        console.error('⚠️ Failed to load sales report:', err)
+        console.error('❌ Failed to load sales report:', err.response?.data || err.message)
         this.reports.sales = { total_revenue: 0, total_transactions: 0, avg_transaction: 0, total_items: 0, transactions: [] }
       }
     },
     async fetchTransfersReport() {
+      console.log('🚚 Fetching Transfers Report', {
+        startDate: this.filters.startDate,
+        endDate: this.filters.endDate,
+      })
       try {
-        const res = await axios.get('/api/reports/transfers', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        const res = await axios.get('/reports/transfers', { 
+          params: { 
+            start_date: this.filters.startDate, 
+            end_date: this.filters.endDate 
+          } 
+        })
+        console.log('✅ Transfers Report Received', res.data)
         this.reports.transfers = res.data
       } catch (err) {
-        console.error('⚠️ Failed to load transfers report:', err)
+        console.error('❌ Failed to load transfers report:', err.response?.data || err.message)
         this.reports.transfers = { total_count: 0, items_in: 0, items_out: 0, list: [] }
       }
     },
     async fetchAnalyticsReport() {
+      console.log('📊 Fetching Analytics Report', {
+        startDate: this.filters.startDate,
+        endDate: this.filters.endDate,
+      })
       try {
-        const res = await axios.get('/api/reports/analytics', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        const res = await axios.get('/reports/analytics', { 
+          params: { 
+            start_date: this.filters.startDate, 
+            end_date: this.filters.endDate 
+          } 
+        })
+        console.log('✅ Analytics Report Received', res.data)
         this.reports.analytics = res.data
       } catch (err) {
-        console.error('⚠️ Failed to load analytics report:', err)
+        console.error('❌ Failed to load analytics report:', err.response?.data || err.message)
         this.reports.analytics = { total_products: 0, in_stock: 0, low_stock: 0, out_of_stock: 0, top_products: [], low_stock_items: [] }
       }
     },
     async fetchPromotionsReport() {
+      console.log('🎁 Fetching Promotions Report', {
+        startDate: this.filters.startDate,
+        endDate: this.filters.endDate,
+      })
       try {
-        const res = await axios.get('/api/reports/promotions', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        const res = await axios.get('/reports/promotions', { 
+          params: { 
+            start_date: this.filters.startDate, 
+            end_date: this.filters.endDate 
+          } 
+        })
+        console.log('✅ Promotions Report Received', res.data)
         this.reports.promotions = res.data
       } catch (err) {
-        console.error('⚠️ Failed to load promotions report:', err)
+        console.error('❌ Failed to load promotions report:', err.response?.data || err.message)
         this.reports.promotions = { active_count: 0, total_discount: 0, total_usage: 0, list: [] }
+      }
+    },
+    async fetchSuppliersReport() {
+      try {
+        const res = await axios.get('/reports/suppliers', {
+          params: {
+            start_date: this.filters.startDate,
+            end_date: this.filters.endDate
+          }
+        })
+        this.reports.suppliers = res.data
+      } catch (err) {
+        console.error('❌ Failed to load suppliers report:', err.response?.data || err.message)
+        this.reports.suppliers = { total_suppliers: 0, total_products_supplied: 0, recent_purchases_count: 0, list: [] }
       }
     },
     async fetchCustomersReport() {
       try {
-        const res = await axios.get('/api/reports/customers', { params: { start_date: this.filters.startDate, end_date: this.filters.endDate } })
+        const res = await axios.get('/reports/customers', {
+          params: {
+            start_date: this.filters.startDate,
+            end_date: this.filters.endDate
+          }
+        })
         this.reports.customers = res.data
       } catch (err) {
-        console.error('⚠️ Failed to load customers report:', err)
+        console.error('❌ Failed to load customers report:', err.response?.data || err.message)
         this.reports.customers = { total_unique: 0, total_served: 0, walk_ins: 0, avg_spend: 0, top_customers: [] }
       }
     },
@@ -394,7 +667,7 @@ export default {
       const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
       this.filters.startDate = thirtyDaysAgo.toISOString().split('T')[0]
       this.filters.endDate = today.toISOString().split('T')[0]
-      this.applyFilters()
+      // Do not auto-reload, user must click Reload
     },
     async refreshAllReports() {
       // Force refresh bypasses cache
@@ -415,6 +688,262 @@ export default {
     formatPromoScope(scope) {
       const map = { all: 'All', category: 'Category', product: 'Product' }
       return map[scope] || scope
+    },
+    async downloadDSRS() {
+      console.log('📥 Downloading DSRS', {
+        startDate: this.filters.startDate,
+        endDate: this.filters.endDate,
+      })
+      this.downloadingDSRS = true
+      try {
+        const params = {
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate
+        }
+        const res = await axios.get('/api/reports/sales/dsrs-export', {
+          params,
+          responseType: 'blob'
+        })
+        console.log('✅ DSRS Downloaded', { size: res.data.size })
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `DSRS_${this.filters.startDate}_${this.filters.endDate}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (err) {
+        console.error('❌ Failed to download DSRS:', err.response?.data || err.message)
+        alert('Failed to download DSRS Excel report.')
+      } finally {
+        this.downloadingDSRS = false
+      }
+    },
+    async downloadSalesSummary() {
+      console.log('📄 Downloading Sales Summary', {
+        startDate: this.filters.startDate,
+        endDate: this.filters.endDate,
+      })
+      this.downloadingSummary = true
+      try {
+        const params = {
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate
+        }
+        const res = await axios.get('/api/reports/sales/summary-excel', {
+          params,
+          responseType: 'blob'
+        })
+        console.log('✅ Sales Summary Downloaded', { size: res.data.size })
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        // FIX: Use .csv extension
+        link.href = url
+        link.setAttribute('download', `Sales_Summary_${this.filters.startDate}_${this.filters.endDate}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (err) {
+        console.error('❌ Failed to download Sales Summary:', err.response?.data || err.message)
+        alert('Failed to download Sales Summary Excel report.')
+      } finally {
+        this.downloadingSummary = false
+      }
+    },
+    async downloadTransfersReport() {
+      this.downloadingTransfers = true
+      try {
+        const params = {
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate
+        }
+        const res = await axios.get('/api/reports/transfers/export-excel', {
+          params,
+          responseType: 'blob'
+        })
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        // FIX: Use .csv extension
+        link.href = url
+        link.setAttribute('download', `Transfers_${this.filters.startDate}_${this.filters.endDate}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (err) {
+        console.error('❌ Failed to download Transfers report:', err.response?.data || err.message)
+        alert('Failed to download Transfers Excel report.')
+      } finally {
+        this.downloadingTransfers = false
+      }
+    },
+    async downloadPromotionsReport() {
+      this.downloadingPromotions = true
+      try {
+        const params = {
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate
+        }
+        // You must implement this endpoint in your backend!
+        const res = await axios.get('/api/reports/promotions/export-csv', {
+          params,
+          responseType: 'blob'
+        })
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `Promotions_${this.filters.startDate}_${this.filters.endDate}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (err) {
+        console.error('❌ Failed to download Promotions report:', err.response?.data || err.message)
+        alert('Failed to download Promotions CSV report.')
+      } finally {
+        this.downloadingPromotions = false
+      }
+    },
+    async downloadCustomersReport() {
+      this.downloadingCustomers = true
+      try {
+        const params = {
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate
+        }
+        // You must implement this endpoint in your backend!
+        const res = await axios.get('/api/reports/customers/export-csv', {
+          params,
+          responseType: 'blob'
+        })
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `Customers_${this.filters.startDate}_${this.filters.endDate}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (err) {
+        console.error('❌ Failed to download Customers report:', err.response?.data || err.message)
+        alert('Failed to download Customers CSV report.')
+      } finally {
+        this.downloadingCustomers = false
+      }
+    },
+    async downloadSuppliersReport() {
+      this.downloadingSuppliers = true
+      try {
+        const params = {
+          start_date: this.filters.startDate,
+          end_date: this.filters.endDate
+        }
+        const res = await axios.get('/api/reports/suppliers/export-csv', {
+          params,
+          responseType: 'blob'
+        })
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `Suppliers_${this.filters.startDate}_${this.filters.endDate}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (err) {
+        console.error('❌ Failed to download Suppliers report:', err.response?.data || err.message)
+        alert('Failed to download Suppliers CSV report.')
+      } finally {
+        this.downloadingSuppliers = false
+      }
+    },
+    async fetchInvoices() {
+      this.loadingInvoices = true
+      try {
+        const res = await axios.get('/invoices')
+        this.invoices = res.data.data || res.data
+        await this.fetchSuppliers()
+        await this.fetchCustomers()
+        await this.fetchProducts()
+      } catch (err) {
+        this.invoices = []
+      } finally {
+        this.loadingInvoices = false
+      }
+    },
+    async fetchSuppliers() {
+      const res = await axios.get('/suppliers')
+      this.suppliers = res.data.data || res.data
+    },
+    async fetchCustomers() {
+      const res = await axios.get('/customers')
+      this.customers = res.data.data || res.data
+    },
+    async fetchProducts() {
+      const res = await axios.get('/products')
+      this.products = res.data.data || res.data
+    },
+    addInvoiceItem() {
+      this.invoiceForm.items.push({ product_id: null, quantity: 1, unit_price: 0 })
+    },
+    removeInvoiceItem(idx) {
+      this.invoiceForm.items.splice(idx, 1)
+    },
+    closeInvoiceModal() {
+      this.showInvoiceModal = false
+      this.resetInvoiceForm()
+    },
+    resetInvoiceForm() {
+      this.invoiceForm = {
+        id: null,
+        type: 'purchase',
+        supplier_id: null,
+        customer_id: null,
+        due_date: '',
+        notes: '',
+        items: [{ product_id: null, quantity: 1, unit_price: 0 }]
+      }
+    },
+    async saveInvoice() {
+      try {
+        const payload = {
+          ...this.invoiceForm,
+          items: this.invoiceForm.items.map(i => ({
+            product_id: i.product_id,
+            quantity: i.quantity,
+            unit_price: i.unit_price
+          }))
+        }
+        if (this.invoiceForm.id) {
+          await axios.put(`/invoices/${this.invoiceForm.id}`, payload)
+        } else {
+          await axios.post('/invoices', payload)
+        }
+        this.closeInvoiceModal()
+        this.fetchInvoices()
+      } catch (err) {
+        alert('Failed to save invoice')
+      }
+    },
+    async deleteInvoice(inv) {
+      if (!confirm('Delete this invoice?')) return
+      try {
+        await axios.delete(`/invoices/${inv.id}`)
+        this.fetchInvoices()
+      } catch (err) {
+        alert('Failed to delete invoice')
+      }
+    },
+    viewInvoice(inv) {
+      this.viewingInvoice = inv
+    }
+  },
+  filters: {
+    currency(val) {
+      if (val == null) return '-'
+      return 'Ksh ' + Number(val).toLocaleString(undefined, { minimumFractionDigits: 2 })
     }
   }
 }

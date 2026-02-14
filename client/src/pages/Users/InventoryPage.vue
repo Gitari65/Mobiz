@@ -1162,7 +1162,7 @@ export default {
     },
     async fetchCurrentUser() {
       try {
-        const response = await axios.get('http://localhost:8000/api/user')
+        const response = await axios.get('http://localhost:8000/user')
         this.currentUser = response.data
       } catch (error) {
         console.error('Error fetching current user:', error)

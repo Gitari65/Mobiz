@@ -19,6 +19,9 @@
               <div class="logo-pulse"></div>
             </div>
           </div>
+          <h1 class="mobiz-title">
+            <span class="mobiz-text">Mobiz</span>
+          </h1>
           <h1 class="login-title">
             <span class="title-text">Mobiz</span>
             <span class="title-accent">POS</span>
@@ -161,39 +164,148 @@
     <!-- OTP Modal -->
     <transition name="fade">
       <div v-if="otpStep.active" class="otp-backdrop">
-        <div class="otp-modal">
-          <h2>Enter OTP</h2>
-          <p class="otp-hint">We sent a verification code to {{ otpStep.destination }}.</p>
-          <input
-            v-model="otpStep.code"
-            type="text"
-            inputmode="numeric"
-            maxlength="10"
-            class="otp-input"
-            placeholder="Enter code"
-          />
-          <p v-if="otpStep.error" class="otp-error">{{ otpStep.error }}</p>
-          <div class="otp-actions">
-            <button class="otp-button" :disabled="otpStep.isVerifying" @click="verifyOtp">
-              {{ otpStep.isVerifying ? 'Verifying...' : 'Verify' }}
-            </button>
-          </div>
-          <div class="otp-footer">
-            <p class="otp-expiry">Code expires in about {{ Math.ceil(otpStep.expiresIn / 60) }} minutes.</p>
-            <p v-if="otpStep.remainingAttempts > 0" class="otp-resend-info">
-              Didn't receive it? 
+        <div class="otp-modal" :class="otpStep.isSignup ? 'signup-view' : 'login-view'">
+          <!-- Signup View -->
+          <div v-if="otpStep.isSignup" class="otp-content signup-content">
+            <div class="otp-header signup-header">
+              <div class="otp-icon">
+                <i class="fas fa-envelope-open-text"></i>
+              </div>
+              <h2>Verify Your Email</h2>
+              <p class="otp-subtitle">Activate your MOBIz account</p>
+            </div>
+
+            <div class="otp-body">
+              <p class="otp-message">
+                Welcome! We've sent a verification code to <strong>{{ otpStep.destination }}</strong> to activate your account.
+              </p>
+
+              <div class="otp-input-group">
+                <label class="otp-label">Verification Code</label>
+                <input
+                  v-model="otpStep.code"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="10"
+                  class="otp-input signup-input"
+                  placeholder="000000"
+                />
+              </div>
+
+              <p v-if="otpStep.error" class="otp-error">
+                <i class="fas fa-exclamation-circle"></i>
+                {{ otpStep.error }}
+              </p>
+
               <button 
-                @click="resendOtp" 
-                :disabled="otpStep.isResending || otpStep.remainingAttempts <= 0"
-                class="otp-resend-btn"
+                class="otp-button signup-button" 
+                :disabled="otpStep.isVerifying || !otpStep.code.trim()" 
+                @click="verifyOtp"
               >
-                {{ otpStep.isResending ? 'Resending...' : 'Resend' }}
+                <div v-if="otpStep.isVerifying" class="otp-btn-spinner"></div>
+                <i v-else class="fas fa-check"></i>
+                <span>{{ otpStep.isVerifying ? 'Verifying...' : 'Verify & Activate' }}</span>
               </button>
-              ({{ otpStep.remainingAttempts }} attempt{{ otpStep.remainingAttempts !== 1 ? 's' : '' }} left)
-            </p>
-            <p v-else class="otp-limit-reached">
-              Resend limit reached. Please contact support to reset.
-            </p>
+            </div>
+
+            <div class="otp-footer signup-footer">
+              <div class="otp-help">
+                <p class="otp-expiry">
+                  <i class="fas fa-clock"></i>
+                  Code expires in about {{ Math.ceil(otpStep.expiresIn / 60) }} minutes
+                </p>
+              </div>
+
+              <div class="otp-resend-section">
+                <p class="otp-resend-text">Didn't receive the code?</p>
+                <button 
+                  v-if="otpStep.remainingAttempts > 0"
+                  @click="resendOtp" 
+                  :disabled="otpStep.isResending || otpStep.remainingAttempts <= 0"
+                  class="otp-resend-link"
+                >
+                  <i class="fas fa-redo"></i>
+                  {{ otpStep.isResending ? 'Resending...' : 'Resend Code' }}
+                </button>
+                <p v-else class="otp-limit-reached">
+                  <i class="fas fa-info-circle"></i>
+                  Resend limit reached. Please contact support.
+                </p>
+                <p v-if="otpStep.remainingAttempts > 0 && !otpStep.isResending" class="otp-attempts">
+                  {{ otpStep.remainingAttempts }} attempt{{ otpStep.remainingAttempts !== 1 ? 's' : '' }} remaining
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Login View -->
+          <div v-else class="otp-content login-content">
+            <div class="otp-header login-header">
+              <div class="otp-icon login-icon">
+                <i class="fas fa-shield-alt"></i>
+              </div>
+              <h2>Security Verification</h2>
+              <p class="otp-subtitle">One-time password verification</p>
+            </div>
+
+            <div class="otp-body">
+              <p class="otp-message">
+                For your security, we've sent a verification code to <strong>{{ otpStep.destination }}</strong>.
+              </p>
+
+              <div class="otp-input-group">
+                <label class="otp-label">Enter Code</label>
+                <input
+                  v-model="otpStep.code"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="10"
+                  class="otp-input login-input"
+                  placeholder="000000"
+                />
+              </div>
+
+              <p v-if="otpStep.error" class="otp-error">
+                <i class="fas fa-exclamation-circle"></i>
+                {{ otpStep.error }}
+              </p>
+
+              <button 
+                class="otp-button login-button" 
+                :disabled="otpStep.isVerifying || !otpStep.code.trim()" 
+                @click="verifyOtp"
+              >
+                <div v-if="otpStep.isVerifying" class="otp-btn-spinner"></div>
+                <i v-else class="fas fa-arrow-right"></i>
+                <span>{{ otpStep.isVerifying ? 'Verifying...' : 'Verify & Continue' }}</span>
+              </button>
+            </div>
+
+            <div class="otp-footer login-footer">
+              <div class="otp-help">
+                <p class="otp-expiry">
+                  <i class="fas fa-hourglass-end"></i>
+                  Code expires in {{ Math.ceil(otpStep.expiresIn / 60) }} minute{{ Math.ceil(otpStep.expiresIn / 60) !== 1 ? 's' : '' }}
+                </p>
+              </div>
+
+              <div class="otp-resend-section">
+                <p class="otp-resend-text">Code not received?</p>
+                <button 
+                  v-if="otpStep.remainingAttempts > 0"
+                  @click="resendOtp" 
+                  :disabled="otpStep.isResending"
+                  class="otp-resend-link"
+                >
+                  <i class="fas fa-envelope"></i>
+                  {{ otpStep.isResending ? 'Sending...' : 'Send New Code' }}
+                </button>
+                <p v-else class="otp-limit-reached">
+                  <i class="fas fa-lock"></i>
+                  Resend attempts exceeded. Contact support.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -341,7 +453,8 @@ const otpStep = reactive({
   isVerifying: false,
   resendCount: 0,
   remainingAttempts: 3,
-  isResending: false
+  isResending: false,
+  isSignup: false // New flag to distinguish signup from login
 })
 
 const pendingSession = reactive({
@@ -568,12 +681,20 @@ const startOtpFlow = (data) => {
   otpStep.error = ''
   otpStep.resendCount = 0
   otpStep.remainingAttempts = 3
+  otpStep.isSignup = data?.is_signup || false // Set signup flag from response
 
-  const otpMessage = data?.otp?.sent
-    ? `An OTP has been sent to ${otpStep.destination}.`
-    : 'Enter the OTP to continue.'
-
-  showAlert('success', 'Login successful!', otpMessage)
+  // Different messages for signup vs login
+  if (otpStep.isSignup) {
+    const otpMessage = data?.otp?.sent
+      ? `We sent a verification code to ${otpStep.destination}. Please check your email to activate your account.`
+      : 'Enter the verification code to activate your account.'
+    showAlert('success', 'Account Created! Verify Email', otpMessage)
+  } else {
+    const otpMessage = data?.otp?.sent
+      ? `An OTP has been sent to ${otpStep.destination}.`
+      : 'Enter the OTP to continue.'
+    showAlert('success', 'Login successful!', otpMessage)
+  }
 }
 
 const verifyOtp = async () => {
@@ -649,7 +770,8 @@ const resendOtp = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: otpStep.email
+        email: otpStep.email,
+        is_signup: otpStep.isSignup // Include signup flag
       })
     })
 
@@ -666,12 +788,17 @@ const resendOtp = async () => {
       otpStep.resendCount = data.resend_count || 0
       otpStep.remainingAttempts = data.remaining_attempts || 0
       otpStep.code = ''
-      showAlert('success', 'OTP resent!', `New code sent to ${data.destination || 'your email'}.`)
+      
+      const message = otpStep.isSignup 
+        ? `Verification code resent to ${data.destination || 'your email'}.`
+        : `New code sent to ${data.destination || 'your email'}.`
+      
+      showAlert('success', 'Code Resent!', message)
     } else {
       if (data?.limit_reached) {
-        otpStep.error = 'OTP resend limit reached (3 attempts). Please contact support to reset your limit.'
+        otpStep.error = 'Resend limit reached (3 attempts). Please contact support to reset your limit.'
       } else {
-        otpStep.error = data?.error || 'Failed to resend OTP. Try again later.'
+        otpStep.error = data?.error || 'Failed to resend code. Try again later.'
       }
     }
   } catch (error) {
@@ -1244,7 +1371,7 @@ onMounted(() => {
   font-size: 16px;
   pointer-events: none;
   transition: all 0.3s ease;
-  z-index: 3;
+  z-index: 1;
   background: rgba(255, 255, 255, 0.9);
   padding: 0 8px;
   max-width: calc(100% - 96px);
@@ -1252,12 +1379,14 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   transform-origin: left center;
+  opacity: 1;
 }
 
 .form-input:focus + .floating-label,
 .form-input.filled + .floating-label,
 .floating-label.floating {
-  transform: translateY(-24px) scale(0.75);
+  top: -12px;
+  transform: translateY(-50%) scale(0.75);
   color: #667eea;
   font-weight: 600;
   background: #fff;

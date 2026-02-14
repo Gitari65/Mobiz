@@ -3,36 +3,93 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Sale;
-use App\Models\Product;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
-use App\Models\SaleItem;
-use DB;
+use App\Models\Product;
 
 class DashboardController extends Controller
 {
-    public function getStats()
+    public function getDashboardStats()
     {
-        $cacheKey = 'dashboard_stats_v1';
-        $stats = \Cache::remember($cacheKey, now()->addSeconds(30), function () {
+        try {
             $today = Carbon::today();
             $yesterday = Carbon::yesterday();
-            $todaySales = Sale::whereDate('created_at', $today)->sum('total');
-            $yesterdaySales = Sale::whereDate('created_at', $yesterday)->sum('total');
-            $lowStock = Product::where('stock_quantity', '<', 5)->count();
-            $outOfStock = Product::where('stock_quantity', '<=', 0)->count();
-            $recentSales = Sale::with('saleItems.product')
-                ->orderBy('created_at', 'desc')
-                ->take(5)
-                ->get();
-            return [
+            
+            // Initialize default values
+            $todaySales = 0;
+            $yesterdaySales = 0;
+            $recentSales = [];
+            
+            // Check if sales table exists and get sales data
+            if (Schema::hasTable('sales')) {
+                // Try different possible column names for total
+                $totalColumn = 'total';
+                if (!Schema::hasColumn('sales', 'total') && Schema::hasColumn('sales', 'total_amount')) {
+                    $totalColumn = 'total_amount';
+                } elseif (!Schema::hasColumn('sales', 'total') && Schema::hasColumn('sales', 'amount')) {
+                    $totalColumn = 'amount';
+                }
+                
+                if (Schema::hasColumn('sales', $totalColumn)) {
+                    $todaySales = (float) DB::table('sales')
+                        ->whereDate('created_at', $today)
+                        ->sum($totalColumn);
+                    
+                    $yesterdaySales = (float) DB::table('sales')
+                        ->whereDate('created_at', $yesterday)
+                        ->sum($totalColumn);
+                    
+                    // Get recent sales (last 5)
+                    $recentSales = DB::table('sales')
+                        ->select('id', $totalColumn . ' as total', 'created_at')
+                        ->orderBy('created_at', 'desc')
+                        ->limit(5)
+                        ->get()
+                        ->map(function($sale) {
+                            return [
+                                'id' => $sale->id,
+                                'total' => (float) $sale->total,
+                                'created_at' => $sale->created_at
+                            ];
+                        });
+                }
+            }
+            
+            // Get stock information
+            $lowStock = 0;
+            $outOfStock = 0;
+            
+            if (Schema::hasTable('products')) {
+                // Count products with low stock (assuming low_stock_threshold or default threshold)
+                $lowStockThreshold = 10; // default threshold
+                
+                $lowStock = Product::where('stock_quantity', '>', 0)
+                    ->where('stock_quantity', '<=', $lowStockThreshold)
+                    ->count();
+                
+                $outOfStock = Product::where('stock_quantity', '<=', 0)->count();
+            }
+            
+            return response()->json([
                 'today_sales' => $todaySales,
                 'yesterday_sales' => $yesterdaySales,
                 'low_stock' => $lowStock,
                 'out_of_stock' => $outOfStock,
                 'recent_sales' => $recentSales
-            ];
-        });
-        return response()->json($stats);
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Dashboard stats error: ' . $e->getMessage());
+            
+            // Return default values if there's any error
+            return response()->json([
+                'today_sales' => 0,
+                'yesterday_sales' => 0,
+                'low_stock' => 0,
+                'out_of_stock' => 0,
+                'recent_sales' => []
+            ]);
+        }
     }
 }

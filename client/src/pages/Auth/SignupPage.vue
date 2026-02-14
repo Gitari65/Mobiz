@@ -5,6 +5,9 @@
         <div class="brand-logo">
           <i class="fas fa-seedling"></i>
         </div>
+        <h1 class="mobiz-title">
+          <span class="mobiz-text">Mobiz</span>
+        </h1>
         <h1 class="brand-title">AGROVET POS</h1>
         <p class="brand-subtitle">Business Account Registration</p>
       </div>
@@ -203,14 +206,11 @@ async function handleSignup() {
   color: white;
 }
 .brand-title {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: #2d3748;
-  margin: 0 0 0.25rem 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  margin: 0;
+  letter-spacing: 0.5px;
 }
 .brand-subtitle {
   color: #718096;
@@ -305,3 +305,34 @@ async function handleSignup() {
   font-weight: 500;
 }
 </style>
+
+.mobiz-title {
+  font-size: 42px;
+  font-weight: 900;
+  margin: 12px 0 8px 0;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #8a2387 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: titleGlow 2s ease-in-out infinite;
+}
+
+@keyframes titleGlow {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(102, 126, 234, 0.5));
+  }
+}
+
+.mobiz-text {
+  display: inline-block;
+  animation: titleSlide 0.8s ease-out 0.1s both;
+}
+
+@keyframes titleSlide {
+  0% { opacity: 0; transform: translateX(-20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}

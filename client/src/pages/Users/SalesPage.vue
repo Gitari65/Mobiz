@@ -926,9 +926,44 @@ async function refreshPromotions() {
         // Ensure we're getting the correct data structure
         const promoData = res.data || {}
         const newDiscount = Number(promoData.total_discount || 0)
-        const newPromos = Array.isArray(promoData.applicable_promotions) 
-          ? promoData.applicable_promotions 
-          : []
+        
+        // Get all applicable promotions - handle various response formats
+        let newPromos = []
+        
+        if (Array.isArray(promoData.applicable_promotions)) {
+          // Direct array format
+          newPromos = promoData.applicable_promotions
+        } else if (promoData.applicable_promotions && typeof promoData.applicable_promotions === 'object') {
+          // Object format - convert to array
+          const promoValues = Object.values(promoData.applicable_promotions)
+          newPromos = Array.isArray(promoValues) ? promoValues.flat() : [promoData.applicable_promotions]
+        }
+        
+        // Normalize all promos to ensure consistent data structure
+        newPromos = newPromos.map(promo => {
+          // Handle different possible field names and data structures
+          const discountValue = Number(
+            promo.discount || 
+            promo.discount_value || 
+            promo.total_discount ||
+            promo.amount ||
+            0
+          )
+          
+          return {
+            id: promo.id || `promo-${Math.random()}`,
+            name: promo.name || promo.promo_name || 'Unknown Promotion',
+            type: promo.type || promo.promo_type || 'unknown',
+            discount: Math.max(0, discountValue), // Ensure non-negative
+            buy_quantity: promo.buy_quantity,
+            get_quantity: promo.get_quantity,
+            discount_value: promo.discount_value,
+            ...promo // Keep all original fields for reference
+          }
+        })
+        
+        // Filter out any promos with zero discount
+        newPromos = newPromos.filter(p => p.discount > 0)
         
         // Only update if values changed to prevent unnecessary re-renders
         if (promoDiscount.value !== newDiscount || 
@@ -938,7 +973,13 @@ async function refreshPromotions() {
           
           console.log('📊 Cart Promo Updated:', {
             count: appliedPromos.value.length,
-            promos: appliedPromos.value,
+            promos: appliedPromos.value.map(p => ({
+              name: p.name,
+              type: p.type,
+              discount: p.discount,
+              buy_qty: p.buy_quantity,
+              get_qty: p.get_quantity
+            })),
             totalDiscount: promoDiscount.value
           })
         }

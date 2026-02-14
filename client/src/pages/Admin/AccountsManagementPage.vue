@@ -344,6 +344,116 @@
         </div>
       </div>
     </div>
+
+    <!-- Invoice Modal -->
+    <div v-if="showInvoiceModal" class="modal-overlay">
+      <div class="modal-content scrollable-modal" @click.stop>
+        <div class="modal-header">
+          <h3>New Invoice</h3>
+          <button @click="closeInvoiceModal" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="saveInvoice">
+            <div class="form-group">
+              <label>Type</label>
+              <select v-model="invoiceForm.type" class="form-control" required>
+                <option value="sale">Sale</option>
+                <option value="purchase">Purchase</option>
+                <option value="service">Service</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group" v-if="invoiceForm.type === 'sale'">
+              <label>Customer</label>
+              <select v-model="invoiceForm.customer_id" class="form-control" required>
+                <option value="">Select Customer</option>
+                <option v-for="c in customersList" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
+            <div class="form-group" v-if="invoiceForm.type === 'purchase'">
+              <label>Supplier</label>
+              <select
+                v-model="invoiceForm.supplier_id"
+                class="form-control"
+                required
+                @change="handleSupplierChange"
+              >
+                <option value="">Select Supplier</option>
+                <option v-for="s in suppliersList" :key="s.id" :value="s.id">{{ s.name }}</option>
+                <option value="__new__">Other (Add New Supplier)</option>
+              </select>
+              
+              <!-- New Supplier Form (only show when "__new__" is selected) -->
+              <div v-if="showNewSupplierInput.value === true" class="new-supplier-form">
+                <div v-if="supplierError" class="alert" style="margin-bottom: 1rem; color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca;">
+                  {{ supplierError }}
+                </div>
+                <div class="form-group">
+                  <label>Supplier Name*</label>
+                  <input v-model="newSupplier.name" class="form-control" required />
+                </div>
+                <div class="form-group">
+                  <label>Contact Person</label>
+                  <input v-model="newSupplier.contact_person" class="form-control" />
+                </div>
+                <div class="form-group">
+                  <label>Phone</label>
+                  <input v-model="newSupplier.phone" class="form-control" />
+                </div>
+                <div class="form-group">
+                  <label>Email</label>
+                  <input v-model="newSupplier.email" class="form-control" />
+                </div>
+                <div class="form-group">
+                  <label>Address</label>
+                  <input v-model="newSupplier.address" class="form-control" />
+                </div>
+                <div class="form-group">
+                  <label>Products Supplied</label>
+                  <input v-model="newSupplier.products_supplied" class="form-control" />
+                </div>
+                <div class="form-group">
+                  <label>Notes</label>
+                  <textarea v-model="newSupplier.notes" class="form-control"></textarea>
+                </div>
+                <button type="button" class="primary-btn" @click="saveNewSupplier" :disabled="supplierLoading">
+                  <span v-if="supplierLoading"><i class="fas fa-spinner fa-spin"></i> Saving...</span>
+                  <span v-else>Save Supplier</span>
+                </button>
+                <button type="button" class="secondary-btn" @click="() => { invoiceForm.supplier_id = ''; showNewSupplierInput.value = false; supplierError.value = '' }">Cancel</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Due Date</label>
+              <input type="date" v-model="invoiceForm.due_date" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea v-model="invoiceForm.notes" class="form-control"></textarea>
+            </div>
+            <div>
+              <h4>Items</h4>
+              <div v-for="(item, idx) in invoiceForm.items" :key="idx" class="invoice-item-row">
+                <select v-model="item.product_id" class="form-control" required>
+                  <option value="">Select Product</option>
+                  <option v-for="p in products" :key="p.id" :value="p.id">
+                    {{ p.name }} - Ksh {{ (p.price || 0).toLocaleString() }}
+                  </option>
+                </select>
+                <input type="number" v-model.number="item.quantity" min="1" placeholder="Qty" class="form-control" style="width:70px" required />
+                <input type="number" v-model.number="item.unit_price" min="0" step="0.01" placeholder="Unit Price" class="form-control" style="width:100px" required />
+                <button type="button" @click="removeInvoiceItem(idx)" v-if="invoiceForm.items.length > 1">✖</button>
+              </div>
+              <button type="button" @click="addInvoiceItem">Add Item</button>
+            </div>
+            <div class="modal-footer">
+              <button type="button" @click="closeInvoiceModal" class="secondary-btn">Cancel</button>
+              <button type="submit" class="primary-btn">Create</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -610,27 +720,224 @@ async function saveCreditLimit() {
   }
 }
 
-// Invoice methods
-function createInvoice() {
-  alert('Create invoice feature coming soon!')
-}
 
-function viewInvoice(invoice) {
-  alert(`View invoice ${invoice.invoice_number} - Feature coming soon!`)
-}
+const showInvoiceModal = ref(false)
+const invoiceForm = ref({
+  type: 'sale',
+  customer_id: '',
+  supplier_id: '',
+  due_date: '',
+  notes: '',
+  items: [{ product_id: '', quantity: 1, unit_price: 0 }]
+})
+const products = ref([])
+const customersList = ref([])
+const suppliersList = ref([])
+const showNewSupplierInput = ref(false)
+const newSupplier = ref({
+  name: '',
+  contact_person: '',
+  phone: '',
+  email: '',
+  address: '',
+  products_supplied: '',
+  notes: ''
+})
+const supplierLoading = ref(false)
+const supplierError = ref('')
 
-function editInvoice(invoice) {
-  alert(`Edit invoice ${invoice.invoice_number} - Feature coming soon!`)
-}
+// ...existing code...
 
-function printInvoice(invoice) {
-  alert(`Print invoice ${invoice.invoice_number} - Feature coming soon!`)
-}
-
-function deleteInvoice(invoice) {
-  if (confirm(`Delete invoice ${invoice.invoice_number}?`)) {
-    alert('Delete feature coming soon!')
+async function fetchProducts() {
+  try {
+    const res = await axios.get('/products')
+    products.value = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : []
+  } catch (err) {
+    console.error('Failed to fetch products', err)
+    products.value = []
   }
+}
+
+async function fetchCustomersList() {
+  try {
+    const res = await axios.get('/customers')
+    customersList.value = Array.isArray(res.data?.data) ? res.data.data : []
+  } catch (err) {
+    console.error('Failed to fetch customers', err)
+    customersList.value = []
+  }
+}
+
+async function fetchSuppliersList() {
+  try {
+    const res = await axios.get('/suppliers')
+    suppliersList.value = Array.isArray(res.data?.data) ? res.data.data : []
+  } catch (err) {
+    console.error('Failed to fetch suppliers', err)
+    suppliersList.value = []
+  }
+}
+
+function addInvoiceItem() {
+  invoiceForm.value.items.push({ product_id: '', quantity: 1, unit_price: 0 })
+}
+function removeInvoiceItem(idx) {
+  if (invoiceForm.value.items.length > 1) invoiceForm.value.items.splice(idx, 1)
+}
+function closeInvoiceModal() {
+  showInvoiceModal.value = false
+  showNewSupplierInput.value = false
+  invoiceForm.value = {
+    type: 'sale',
+    customer_id: '',
+    supplier_id: '',
+    due_date: '',
+    notes: '',
+    items: [{ product_id: '', quantity: 1, unit_price: 0 }]
+  }
+}
+async function saveInvoice() {
+  try {
+    // Validate required fields before sending
+    if (!invoiceForm.value.items || invoiceForm.value.items.length === 0) {
+      alert('Please add at least one item to the invoice')
+      return
+    }
+
+    // Validate invoice type-specific required fields
+    if (invoiceForm.value.type === 'sale' && !invoiceForm.value.customer_id) {
+      alert('Please select a customer for sale invoices')
+      return
+    }
+
+    if (invoiceForm.value.type === 'purchase' && !invoiceForm.value.supplier_id) {
+      alert('Please select a supplier for purchase invoices')
+      return
+    }
+
+    // Validate all items have required fields
+    const invalidItems = invoiceForm.value.items.filter(item => 
+      !item.product_id || !item.quantity || item.quantity <= 0 || !item.unit_price || item.unit_price < 0
+    )
+
+    if (invalidItems.length > 0) {
+      alert('Please ensure all items have valid product, quantity, and unit price')
+      return
+    }
+
+    // Build the payload matching backend validation
+    const payload = {
+      type: invoiceForm.value.type,
+      invoice_date: new Date().toISOString().split('T')[0],
+      due_date: invoiceForm.value.due_date || null,
+      notes: invoiceForm.value.notes || null,
+      items: invoiceForm.value.items.map(i => ({
+        product_id: i.product_id ? parseInt(i.product_id) : null,
+        quantity: parseInt(i.quantity),
+        unit_price: parseFloat(i.unit_price),
+        description: null
+      })),
+      // For sale invoices, set customer_id; for purchase, set supplier_id
+      ...(invoiceForm.value.type === 'sale' ? {
+        customer_id: parseInt(invoiceForm.value.customer_id),
+        supplier_id: null
+      } : {
+        supplier_id: parseInt(invoiceForm.value.supplier_id),
+        customer_id: null
+      }),
+      company_id: customersList.value.find(c => c.id === invoiceForm.value.customer_id)?.company_id 
+        || suppliersList.value.find(s => s.id === invoiceForm.value.supplier_id)?.company_id
+        || 1, // fallback to 1 if not found
+      tax: 0,
+      discount: 0,
+      paid_amount: 0
+    }
+
+    console.log('Invoice payload:', payload)
+
+    const res = await axios.post('/api/invoices', payload)
+    
+    console.log('Invoice created:', res.data)
+    closeInvoiceModal()
+    await fetchInvoices()
+    alert('Invoice created successfully!')
+  } catch (err) {
+    console.error('Failed to create invoice:', err)
+    
+    // Detailed error handling
+    const errorMessage = err.response?.data?.message 
+      || err.response?.data?.error 
+      || (err.response?.data?.details ? Object.values(err.response.data.details).join(', ') : '')
+      || err.message
+    
+    alert(`Failed to create invoice:\n${errorMessage}`)
+  }
+}
+function handleSupplierChange() {
+  if (invoiceForm.value.supplier_id === '__new__') {
+    showNewSupplierInput.value = true
+  } else {
+    showNewSupplierInput.value = false
+    supplierError.value = ''
+  }
+}
+async function saveNewSupplier() {
+  supplierError.value = ''
+  supplierLoading.value = true
+  
+  if (!newSupplier.value.name) {
+    supplierError.value = 'Supplier name is required'
+    supplierLoading.value = false
+    return
+  }
+  
+  try {
+    const res = await axios.post('/suppliers', {
+      name: newSupplier.value.name,
+      contact_person: newSupplier.value.contact_person,
+      phone: newSupplier.value.phone,
+      email: newSupplier.value.email,
+      address: newSupplier.value.address,
+      products_supplied: newSupplier.value.products_supplied,
+      notes: newSupplier.value.notes
+    })
+    
+    const supplier = res.data.data || res.data
+    if (!supplier || !supplier.id) {
+      supplierError.value = 'Failed to add supplier. Please try again.'
+      supplierLoading.value = false
+      return
+    }
+    
+    suppliersList.value.push(supplier)
+    invoiceForm.value.supplier_id = supplier.id
+    showNewSupplierInput.value = false
+    newSupplier.value = {
+      name: '',
+      contact_person: '',
+      phone: '',
+      email: '',
+      address: '',
+      products_supplied: '',
+      notes: ''
+    }
+    supplierLoading.value = false
+    supplierError.value = ''
+    alert('Supplier added successfully!')
+  } catch (err) {
+    supplierError.value =
+      err.response?.data?.error ||
+      (err.response?.data?.details && Object.values(err.response.data.details).join(', ')) ||
+      'Failed to add supplier'
+    supplierLoading.value = false
+  }
+}
+
+function createInvoice() {
+  showInvoiceModal.value = true
+  fetchProducts()
+  fetchCustomersList()
+  fetchSuppliersList()
 }
 
 // Return methods
@@ -678,12 +985,19 @@ async function rejectReturn(returnItem) {
 async function fetchInvoices() {
   try {
     const res = await axios.get('/api/invoices')
-    invoices.value = res.data.map(inv => ({
+    // Fix: handle paginated response (Laravel returns {data: [...]})
+    const list = Array.isArray(res.data)
+      ? res.data
+      : Array.isArray(res.data?.data)
+        ? res.data.data
+        : []
+    invoices.value = list.map(inv => ({
       ...inv,
       customer_name: inv.customer?.name || 'Unknown'
     }))
   } catch (err) {
     console.error('Failed to fetch invoices', err)
+    invoices.value = []
   }
 }
 
@@ -992,6 +1306,14 @@ onMounted(() => {
   width: 90%;
   max-width: 500px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.scrollable-modal {
+  overflow-y: auto;
+  max-height: 90vh;
 }
 
 .modal-header {
@@ -1027,6 +1349,7 @@ onMounted(() => {
 
 .modal-body {
   padding: 1.5rem;
+  /* Remove overflow here, handled by .scrollable-modal */
 }
 
 .form-group {

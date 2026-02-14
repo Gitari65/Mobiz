@@ -1,10 +1,10 @@
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ collapsed: sidebarCollapsed }">
     <!-- Alert System -->
     <div v-if="alert.show" class="sidebar-alert" :class="alert.type">
       <div class="alert-content">
         <i :class="getAlertIcon(alert.type)"></i>
-        <span>{{ alert.message }}</span>
+        <span v-if="!sidebarCollapsed">{{ alert.message }}</span>
       </div>
       <button @click="dismissAlert" class="alert-close">
         <i class="fas fa-times"></i>
@@ -16,9 +16,16 @@
       <div class="brand-logo">
         <i class="fas fa-shopping-cart"></i>
       </div>
-      <h2 class="logo">Mobiz</h2>
-      <p class="brand-subtitle">POS System</p>
+      <template v-if="!sidebarCollapsed">
+        <h2 class="logo">Mobiz</h2>
+        <p class="brand-subtitle">POS System</p>
+      </template>
     </div>
+
+    <!-- Toggle Collapse Button -->
+    <button class="sidebar-toggle" @click="toggleSidebar" :title="sidebarCollapsed ? 'Expand' : 'Collapse'">
+      <i :class="sidebarCollapsed ? 'fas fa-chevron-right' : 'fas fa-chevron-left'"></i>
+    </button>
 
     <!-- Navigation Menu -->
     <nav class="navigation">
@@ -26,27 +33,27 @@
         <!-- ============= CASHIER MENUS ============= -->
         <template v-if="isCashier">
           <li class="nav-item">
-            <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
+            <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')" :title="sidebarCollapsed ? 'Dashboard' : ''">
               <i class="fas fa-tachometer-alt nav-icon"></i>
-              <span class="nav-text">Dashboard</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Dashboard</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
+            <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')" :title="sidebarCollapsed ? 'POS Sales' : ''">
               <i class="fas fa-cash-register nav-icon"></i>
-              <span class="nav-text">POS Sales</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">POS Sales</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/profile" class="nav-link" @click="setActiveItem('profile')">
+            <router-link to="/profile" class="nav-link" @click="setActiveItem('profile')" :title="sidebarCollapsed ? 'My Profile' : ''">
               <i class="fas fa-user-circle nav-icon"></i>
-              <span class="nav-text">My Profile</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">My Profile</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
+            <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')" :title="sidebarCollapsed ? 'Settings' : ''">
               <i class="fas fa-cog nav-icon"></i>
-              <span class="nav-text">Settings</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Settings</span>
             </router-link>
           </li>
         </template>
@@ -54,158 +61,158 @@
         <!-- ============= ADMIN MENUS ============= -->
         <template v-else-if="isAdmin">
           <li class="nav-item">
-            <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')">
+            <router-link to="/" class="nav-link" @click="setActiveItem('dashboard')" :title="sidebarCollapsed ? 'Dashboard' : ''">
               <i class="fas fa-tachometer-alt nav-icon"></i>
-              <span class="nav-text">Dashboard</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Dashboard</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')">
+            <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')" :title="sidebarCollapsed ? 'POS Sales' : ''">
               <i class="fas fa-cash-register nav-icon"></i>
-              <span class="nav-text">POS Sales</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">POS Sales</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/products" class="nav-link" @click="setActiveItem('products')">
+            <router-link to="/products" class="nav-link" @click="setActiveItem('products')" :title="sidebarCollapsed ? 'Products' : ''">
               <i class="fas fa-box nav-icon"></i>
-              <span class="nav-text">Products</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Products</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')">
+            <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')" :title="sidebarCollapsed ? 'Inventory' : ''">
               <i class="fas fa-warehouse nav-icon"></i>
-              <span class="nav-text">Inventory</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Inventory</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')">
+            <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')" :title="sidebarCollapsed ? 'Reports' : ''">
               <i class="fas fa-chart-bar nav-icon"></i>
-              <span class="nav-text">Reports</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Reports</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')">
+            <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')" :title="sidebarCollapsed ? 'Expenses' : ''">
               <i class="fas fa-receipt nav-icon"></i>
-              <span class="nav-text">Expenses</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Expenses</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/promotions" class="nav-link" @click="setActiveItem('promotions')">
+            <router-link to="/promotions" class="nav-link" @click="setActiveItem('promotions')" :title="sidebarCollapsed ? 'Promotions' : ''">
               <i class="fas fa-tags nav-icon"></i>
-              <span class="nav-text">Promotions</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Promotions</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/accounts" class="nav-link" @click="setActiveItem('accounts')">
+            <router-link to="/accounts" class="nav-link" @click="setActiveItem('accounts')" :title="sidebarCollapsed ? 'Accounts' : ''">
               <i class="fas fa-money-bill-wave nav-icon"></i>
-              <span class="nav-text">Accounts</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Accounts</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')">
+            <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')" :title="sidebarCollapsed ? 'Admin Customization' : ''">
               <i class="fas fa-cogs nav-icon"></i>
-              <span class="nav-text">Admin Customization</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Admin Customization</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/users" class="nav-link" @click="setActiveItem('users')">
+            <router-link to="/users" class="nav-link" @click="setActiveItem('users')" :title="sidebarCollapsed ? 'Manage Users' : ''">
               <i class="fas fa-users nav-icon"></i>
-              <span class="nav-text">Manage Users</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Manage Users</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/company-profile" class="nav-link" @click="setActiveItem('company-profile')">
+            <router-link to="/company-profile" class="nav-link" @click="setActiveItem('company-profile')" :title="sidebarCollapsed ? 'Company Profile' : ''">
               <i class="fas fa-building nav-icon"></i>
-              <span class="nav-text">Company Profile</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Company Profile</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/profile" class="nav-link" @click="setActiveItem('profile')">
+            <router-link to="/profile" class="nav-link" @click="setActiveItem('profile')" :title="sidebarCollapsed ? 'My Profile' : ''">
               <i class="fas fa-user-circle nav-icon"></i>
-              <span class="nav-text">My Profile</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">My Profile</span>
             </router-link>
           </li>
           <li class="nav-item">
-            <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')">
+            <router-link to="/settings" class="nav-link" @click="setActiveItem('settings')" :title="sidebarCollapsed ? 'Settings' : ''">
               <i class="fas fa-cog nav-icon"></i>
-              <span class="nav-text">Settings</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Settings</span>
             </router-link>
           </li>
         </template>
 
         <!-- ============= SUPER USER MENUS ============= -->
         <template v-else-if="isSuperUser">
-          <li class="nav-item nav-section-title">
+          <li class="nav-item nav-section-title" v-if="!sidebarCollapsed">
             <span>Super User</span>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser-dashboard')">
+            <router-link to="/superuser" class="nav-link" @click="setActiveItem('superuser-dashboard')" :title="sidebarCollapsed ? 'Dashboard' : ''">
               <i class="fas fa-user-shield nav-icon"></i>
-              <span class="nav-text">Dashboard</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Dashboard</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/user-management" class="nav-link" @click="setActiveItem('superuser-users')">
+            <router-link to="/superuser/user-management" class="nav-link" @click="setActiveItem('superuser-users')" :title="sidebarCollapsed ? 'User Management' : ''">
               <i class="fas fa-users nav-icon"></i>
-              <span class="nav-text">User Management</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">User Management</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/audit-logs" class="nav-link" @click="setActiveItem('superuser-audit')">
+            <router-link to="/superuser/audit-logs" class="nav-link" @click="setActiveItem('superuser-audit')" :title="sidebarCollapsed ? 'Audit Logs' : ''">
               <i class="fas fa-clipboard-list nav-icon"></i>
-              <span class="nav-text">Audit Logs</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Audit Logs</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/global-settings" class="nav-link" @click="setActiveItem('superuser-settings')">
+            <router-link to="/superuser/global-settings" class="nav-link" @click="setActiveItem('superuser-settings')" :title="sidebarCollapsed ? 'Global Settings' : ''">
               <i class="fas fa-globe nav-icon"></i>
-              <span class="nav-text">Global Settings</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Global Settings</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/data-export" class="nav-link" @click="setActiveItem('superuser-export')">
+            <router-link to="/superuser/data-export" class="nav-link" @click="setActiveItem('superuser-export')" :title="sidebarCollapsed ? 'Data Export' : ''">
               <i class="fas fa-file-export nav-icon"></i>
-              <span class="nav-text">Data Export</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Data Export</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/support" class="nav-link" @click="setActiveItem('superuser-support')">
+            <router-link to="/superuser/support" class="nav-link" @click="setActiveItem('superuser-support')" :title="sidebarCollapsed ? 'Support' : ''">
               <i class="fas fa-headset nav-icon"></i>
-              <span class="nav-text">Support & Communication</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Support & Communication</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/subscriptions" class="nav-link" @click="setActiveItem('superuser-subscriptions')">
+            <router-link to="/superuser/subscriptions" class="nav-link" @click="setActiveItem('superuser-subscriptions')" :title="sidebarCollapsed ? 'Subscriptions' : ''">
               <i class="fas fa-credit-card nav-icon"></i>
-              <span class="nav-text">Subscription & Billing</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Subscription & Billing</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/impersonate" class="nav-link" @click="setActiveItem('superuser-impersonate')">
+            <router-link to="/superuser/impersonate" class="nav-link" @click="setActiveItem('superuser-impersonate')" :title="sidebarCollapsed ? 'Impersonate' : ''">
               <i class="fas fa-user-secret nav-icon"></i>
-              <span class="nav-text">Impersonate Business Admin</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Impersonate Business Admin</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/profile" class="nav-link" @click="setActiveItem('superuser-profile')">
+            <router-link to="/superuser/profile" class="nav-link" @click="setActiveItem('superuser-profile')" :title="sidebarCollapsed ? 'My Profile' : ''">
               <i class="fas fa-user-circle nav-icon"></i>
-              <span class="nav-text">My Profile</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">My Profile</span>
             </router-link>
           </li>
 
           <li class="nav-item">
-            <router-link to="/superuser/settings" class="nav-link" @click="setActiveItem('superuser-settings')">
+            <router-link to="/superuser/settings" class="nav-link" @click="setActiveItem('superuser-settings')" :title="sidebarCollapsed ? 'Settings' : ''">
               <i class="fas fa-cog nav-icon"></i>
-              <span class="nav-text">Settings</span>
+              <span v-if="!sidebarCollapsed" class="nav-text">Settings</span>
             </router-link>
           </li>
         </template>
@@ -222,12 +229,12 @@
     <!-- Loading Spinner -->
     <div v-if="isLoading" class="sidebar-spinner">
       <div class="spinner"></div>
-      <p class="loading-text">Loading...</p>
+      <p v-if="!sidebarCollapsed" class="loading-text">Loading...</p>
     </div>
 
     <!-- Footer -->
     <div class="sidebar-footer">
-      <div class="user-section">
+      <div class="user-section" v-if="!sidebarCollapsed">
         <div class="user-avatar"><i class="fas fa-user"></i></div>
         <div class="user-info">
           <p class="user-name">{{ userName }}</p>
@@ -241,8 +248,9 @@
           <i class="fas fa-comments"></i>
           <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </button>
-        <button class="logout-btn" @click="handleLogout">
-          <i class="fas fa-sign-out-alt"></i><span>Logout</span>
+        <button class="logout-btn" @click="handleLogout" :title="sidebarCollapsed ? 'Logout' : ''">
+          <i class="fas fa-sign-out-alt"></i>
+          <span v-if="!sidebarCollapsed">Logout</span>
         </button>
       </div>
     </div>
@@ -268,6 +276,15 @@ const activeItem = ref('dashboard')
 const unreadCount = ref(0)
 const showChatModal = ref(false)
 const chatRefreshInterval = ref(null)
+const sidebarCollapsed = ref(false)
+
+// Load collapsed state from localStorage
+onMounted(() => {
+  const savedCollapsedState = localStorage.getItem('sidebarCollapsed')
+  if (savedCollapsedState !== null) {
+    sidebarCollapsed.value = JSON.parse(savedCollapsedState)
+  }
+})
 
 // --- ALERT SYSTEM ---
 const alert = reactive({
@@ -309,6 +326,11 @@ const setActiveItem = (item) => (activeItem.value = item)
 
 const setLoading = (loading) => (isLoading.value = loading)
 
+const toggleSidebar = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed.value))
+}
+
 const initializeUserRole = () => {
   try {
     const storedUser = JSON.parse(localStorage.getItem('userData'))
@@ -344,7 +366,6 @@ const handleLogout = async () => {
 
 const loadUnreadCount = async () => {
   try {
-    // don't call protected endpoint if no token present
     const token = localStorage.getItem('authToken')
     if (!token) {
       console.warn('Skipping unread count load: no auth token')
@@ -353,11 +374,9 @@ const loadUnreadCount = async () => {
     }
 
     try {
-      // axios interceptor should already set Authorization header from token
       const res = await axios.get('/api/super/chats/unread-count')
       unreadCount.value = res.data.unread_count || 0
     } catch (err) {
-      // Silently fail if endpoint doesn't exist yet
       console.debug('Chat unread count endpoint not available')
       unreadCount.value = 0
     }
@@ -382,9 +401,7 @@ const onChatMessageSent = () => {
 // --- LIFECYCLE ---
 onMounted(() => {
   initializeUserRole()
-  // Load unread count for all authenticated users
   loadUnreadCount()
-  // Poll unread count every 10 seconds
   chatRefreshInterval.value = setInterval(loadUnreadCount, 10000)
   
   const path = router.currentRoute.value.path
@@ -403,6 +420,90 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Modern Sidebar Component Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.sidebar {
+  width: 280px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
+  color: white;
+  height: 100vh;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar.collapsed {
+  width: 80px;
+}
+
+.sidebar.collapsed .brand-logo {
+  width: 50px;
+  height: 50px;
+  font-size: 1.25rem;
+}
+
+.sidebar.collapsed .nav-text,
+.sidebar.collapsed .user-info,
+.sidebar.collapsed .loading-text {
+  display: none;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 1.5rem;
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  z-index: 100;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.sidebar-toggle:hover {
+  transform: scale(1.15);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.sidebar.collapsed .nav-section-title {
+  display: none;
+}
+
+.sidebar.collapsed .nav-link {
+  justify-content: center;
+  padding: 0.7rem;
+}
+
+.sidebar.collapsed .user-section {
+  display: none;
+}
+
+.sidebar.collapsed .footer-actions {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar.collapsed .chat-btn,
+.sidebar.collapsed .logout-btn {
+  flex: 1;
+  width: 100%;
+}
+
 /* Add your existing styles here */
 .sidebar {
   /* Your sidebar styles */
@@ -448,6 +549,7 @@ onUnmounted(() => {
 
 .sidebar {
   width: 280px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
   color: white;
   height: 100vh;
@@ -461,18 +563,69 @@ onUnmounted(() => {
   box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
 }
 
-.sidebar::before {
-  content: '';
+.sidebar.collapsed {
+  width: 80px;
+}
+
+.sidebar.collapsed .brand-logo {
+  width: 50px;
+  height: 50px;
+  font-size: 1.25rem;
+}
+
+.sidebar.collapsed .nav-text,
+.sidebar.collapsed .user-info,
+.sidebar.collapsed .loading-text {
+  display: none;
+}
+
+.sidebar-toggle {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 80% 20%, rgba(118, 75, 162, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 40% 80%, rgba(72, 187, 120, 0.05) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: 0;
+  top: 1.5rem;
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  z-index: 100;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.sidebar-toggle:hover {
+  transform: scale(1.15);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.sidebar.collapsed .nav-section-title {
+  display: none;
+}
+
+.sidebar.collapsed .nav-link {
+  justify-content: center;
+  padding: 0.7rem;
+}
+
+.sidebar.collapsed .user-section {
+  display: none;
+}
+
+.sidebar.collapsed .footer-actions {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar.collapsed .chat-btn,
+.sidebar.collapsed .logout-btn {
+  flex: 1;
+  width: 100%;
 }
 
 /* Alert System */

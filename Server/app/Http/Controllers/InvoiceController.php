@@ -4,370 +4,235 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
-use App\Models\Customer;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class InvoiceController extends Controller
 {
-    /**
-     * List all invoices
-     */
     public function index(Request $request)
     {
-        try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['error' => 'Unauthenticated'], 401);
-            }
-
-            $query = Invoice::where('company_id', $user->company_id)
-                ->with(['customer', 'items', 'user']);
-
-            // Filter by status
-            if ($request->has('status') && $request->status !== 'all') {
-                $query->where('status', $request->status);
-            }
-
-            // Filter by customer
-            if ($request->has('customer_id')) {
-                $query->where('customer_id', $request->customer_id);
-            }
-
-            // Search
-            if ($request->has('search')) {
-                $search = $request->search;
-                $query->where(function($q) use ($search) {
-                    $q->where('invoice_number', 'like', "%{$search}%")
-                      ->orWhereHas('customer', function($q) use ($search) {
-                          $q->where('name', 'like', "%{$search}%");
-                      });
-                });
-            }
-
-            $invoices = $query->orderBy('invoice_date', 'desc')->get();
-
-            return response()->json($invoices);
-        } catch (\Exception $e) {
-            Log::error('Error fetching invoices: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch invoices'], 500);
+        $query = Invoice::with(['supplier', 'customer', 'company', 'items.product']);
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
         }
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+        return response()->json($query->orderByDesc('created_at')->paginate(20));
     }
 
-    /**
-     * Get a single invoice
-     */
     public function show($id)
     {
-        try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['error' => 'Unauthenticated'], 401);
-            }
-
-            $invoice = Invoice::where('company_id', $user->company_id)
-                ->with(['customer', 'items.product', 'user'])
-                ->findOrFail($id);
-
-            return response()->json($invoice);
-        } catch (\Exception $e) {
-            Log::error('Error fetching invoice: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch invoice'], 500);
-        }
+        $invoice = Invoice::with(['supplier', 'customer', 'company', 'items.product'])->findOrFail($id);
+        return response()->json($invoice);
     }
 
-    /**
-     * Create a new invoice
-     */
     public function store(Request $request)
     {
+        $validated = $request->validate([
+            'type' => 'required|string|in:purchase,sale,service,other',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+            'customer_id' => 'nullable|exists:customers,id',
+            'company_id' => 'nullable|exists:companies,id',
+            'invoice_date' => 'nullable|date',
+            'due_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'nullable|exists:products,id',
+            'items.*.description' => 'nullable|string',
+            'items.*.quantity' => 'required|numeric|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'tax' => 'nullable|numeric|min:0',
+            'discount' => 'nullable|numeric|min:0',
+            'paid_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        DB::beginTransaction();
         try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['error' => 'Unauthenticated'], 401);
+            $user = Auth::user();
+            $userId = $user ? $user->id : 1;
+            
+            // Use authenticated user's company or provided company_id
+            $companyId = $validated['company_id'] ?? ($user ? $user->company_id : null);
+            
+            if (!$companyId) {
+                return response()->json([
+                    'error' => 'Failed to create invoice',
+                    'message' => 'No company associated with user'
+                ], 400);
             }
 
-            $validated = $request->validate([
-                'customer_id' => 'required|exists:customers,id',
-                'invoice_date' => 'required|date',
-                'due_date' => 'required|date|after_or_equal:invoice_date',
-                'items' => 'required|array|min:1',
-                'items.*.product_id' => 'required|exists:products,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.unit_price' => 'required|numeric|min:0',
-                'tax' => 'nullable|numeric|min:0',
-                'notes' => 'nullable|string',
-            ]);
-
-            // Verify customer belongs to company
-            $customer = Customer::where('company_id', $user->company_id)
-                ->findOrFail($validated['customer_id']);
-
-            DB::beginTransaction();
+            // Generate invoice number
+            $invoiceNumber = $request->input('invoice_number') ?? Invoice::generateInvoiceNumber();
 
             // Calculate totals
             $subtotal = 0;
             foreach ($validated['items'] as $item) {
-                $subtotal += $item['quantity'] * $item['unit_price'];
+                $subtotal += (float)$item['quantity'] * (float)$item['unit_price'];
+            }
+            
+            $tax = (float)($validated['tax'] ?? 0);
+            $discount = (float)($validated['discount'] ?? 0);
+            $total = $subtotal + $tax - $discount;
+            $paid = (float)($validated['paid_amount'] ?? 0);
+            $balance = $total - $paid;
+
+            // Validate supplier_id for purchase invoices
+            if ($validated['type'] === 'purchase' && !empty($validated['supplier_id'])) {
+                $supplierExists = \App\Models\Supplier::where('id', $validated['supplier_id'])
+                    ->where('company_id', $companyId)
+                    ->exists();
+                
+                if (!$supplierExists) {
+                    return response()->json([
+                        'error' => 'Failed to create invoice',
+                        'message' => 'Supplier not found for this company'
+                    ], 422);
+                }
             }
 
-            $tax = $validated['tax'] ?? 0;
-            $total = $subtotal + $tax;
-
-            // Generate invoice number
-            $invoiceNumber = $this->generateInvoiceNumber($user->company_id);
+            // Validate customer_id for sale invoices
+            if ($validated['type'] === 'sale' && !empty($validated['customer_id'])) {
+                $customerExists = \App\Models\Customer::where('id', $validated['customer_id'])
+                    ->where('company_id', $companyId)
+                    ->exists();
+                
+                if (!$customerExists) {
+                    return response()->json([
+                        'error' => 'Failed to create invoice',
+                        'message' => 'Customer not found for this company'
+                    ], 422);
+                }
+            }
 
             // Create invoice
             $invoice = Invoice::create([
-                'customer_id' => $customer->id,
-                'company_id' => $user->company_id,
-                'user_id' => $user->id,
                 'invoice_number' => $invoiceNumber,
-                'invoice_date' => $validated['invoice_date'],
-                'due_date' => $validated['due_date'],
+                'type' => $validated['type'],
+                'supplier_id' => $validated['supplier_id'] ?? null,
+                'customer_id' => $validated['customer_id'] ?? null,
+                'company_id' => $companyId,
+                'user_id' => $userId,
+                'invoice_date' => $validated['invoice_date'] ?? now()->toDateString(),
+                'due_date' => $validated['due_date'] ?? null,
                 'subtotal' => $subtotal,
                 'tax' => $tax,
+                'discount' => $discount,
                 'total' => $total,
-                'paid_amount' => 0,
-                'balance' => $total,
-                'status' => 'draft',
+                'paid_amount' => $paid,
+                'balance' => $balance,
+                'status' => $balance <= 0 ? 'paid' : 'draft',
                 'notes' => $validated['notes'] ?? null,
             ]);
 
             // Create invoice items
             foreach ($validated['items'] as $item) {
-                $product = \App\Models\Product::find($item['product_id']);
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
-                    'product_id' => $item['product_id'],
-                    'product_name' => $product->name,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'subtotal' => $item['quantity'] * $item['unit_price'],
+                    'product_id' => $item['product_id'] ?? null,
+                    'description' => $item['description'] ?? null,
+                    'quantity' => (int)$item['quantity'],
+                    'unit_price' => (float)$item['unit_price'],
+                    'total_price' => (float)$item['quantity'] * (float)$item['unit_price'],
                 ]);
+                
+                // Update stock for purchase/sale
+                if ($item['product_id']) {
+                    $product = Product::find($item['product_id']);
+                    if ($product) {
+                        if ($invoice->type === 'purchase') {
+                            $product->increment('stock_quantity', (int)$item['quantity']);
+                        } elseif ($invoice->type === 'sale') {
+                            if ($product->stock_quantity >= $item['quantity']) {
+                                $product->decrement('stock_quantity', (int)$item['quantity']);
+                            }
+                        }
+                    }
+                }
             }
 
+            $invoice->load(['supplier', 'customer', 'company', 'items.product']);
+
             DB::commit();
+
+            // Audit log
+            Log::info('Invoice created', [
+                'user_id' => $userId,
+                'invoice_id' => $invoice->id,
+                'type' => $invoice->type,
+                'supplier_id' => $invoice->supplier_id,
+                'customer_id' => $invoice->customer_id,
+                'company_id' => $companyId,
+                'total' => $invoice->total
+            ]);
 
             return response()->json([
                 'message' => 'Invoice created successfully',
-                'invoice' => $invoice->load('items', 'customer')
+                'data' => $invoice
             ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            Log::error('Invoice validation error', [
+                'errors' => $e->errors(),
+                'user_id' => Auth::id()
+            ]);
+            return response()->json([
+                'error' => 'Validation failed',
+                'details' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error creating invoice: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create invoice'], 500);
+            Log::error('Invoice creation failed', [
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Failed to create invoice',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
-    /**
-     * Update an invoice
-     */
     public function update(Request $request, $id)
     {
-        try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['error' => 'Unauthenticated'], 401);
-            }
+        $invoice = Invoice::findOrFail($id);
+        $validated = $request->validate([
+            'status' => 'nullable|string|in:draft,sent,paid,cancelled',
+            'due_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+        $invoice->update($validated);
 
-            $invoice = Invoice::where('company_id', $user->company_id)
-                ->findOrFail($id);
+        // Audit log
+        Log::info('Invoice updated', [
+            'user_id' => Auth::id(),
+            'invoice_id' => $invoice->id,
+            'changes' => $validated
+        ]);
 
-            // Only allow editing draft invoices
-            if ($invoice->status !== 'draft') {
-                return response()->json(['error' => 'Only draft invoices can be edited'], 422);
-            }
-
-            $validated = $request->validate([
-                'invoice_date' => 'sometimes|date',
-                'due_date' => 'sometimes|date|after_or_equal:invoice_date',
-                'items' => 'sometimes|array|min:1',
-                'items.*.product_id' => 'required|exists:products,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.unit_price' => 'required|numeric|min:0',
-                'tax' => 'nullable|numeric|min:0',
-                'notes' => 'nullable|string',
-                'status' => 'sometimes|in:draft,sent,paid,overdue,cancelled',
-            ]);
-
-            DB::beginTransaction();
-
-            // Update items if provided
-            if (isset($validated['items'])) {
-                // Delete old items
-                $invoice->items()->delete();
-
-                // Calculate new totals
-                $subtotal = 0;
-                foreach ($validated['items'] as $item) {
-                    $subtotal += $item['quantity'] * $item['unit_price'];
-                    
-                    $product = \App\Models\Product::find($item['product_id']);
-                    InvoiceItem::create([
-                        'invoice_id' => $invoice->id,
-                        'product_id' => $item['product_id'],
-                        'product_name' => $product->name,
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'subtotal' => $item['quantity'] * $item['unit_price'],
-                    ]);
-                }
-
-                $tax = $validated['tax'] ?? $invoice->tax;
-                $total = $subtotal + $tax;
-
-                $invoice->update([
-                    'subtotal' => $subtotal,
-                    'tax' => $tax,
-                    'total' => $total,
-                    'balance' => $total - $invoice->paid_amount,
-                ]);
-            }
-
-            // Update other fields
-            $invoice->update(array_filter($validated, function($key) {
-                return !in_array($key, ['items', 'tax']);
-            }, ARRAY_FILTER_USE_KEY));
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Invoice updated successfully',
-                'invoice' => $invoice->load('items', 'customer')
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error updating invoice: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update invoice'], 500);
-        }
+        return response()->json($invoice);
     }
 
-    /**
-     * Delete an invoice
-     */
     public function destroy($id)
     {
-        try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['error' => 'Unauthenticated'], 401);
-            }
+        $invoice = Invoice::findOrFail($id);
+        $invoiceId = $invoice->id;
+        $userId = Auth::id();
 
-            $invoice = Invoice::where('company_id', $user->company_id)
-                ->findOrFail($id);
+        // Optionally: reverse stock changes if needed
+        $invoice->delete();
 
-            // Only allow deleting draft invoices
-            if ($invoice->status !== 'draft') {
-                return response()->json(['error' => 'Only draft invoices can be deleted'], 422);
-            }
+        // Audit log
+        Log::info('Invoice deleted', [
+            'user_id' => $userId,
+            'invoice_id' => $invoiceId
+        ]);
 
-            $invoice->delete();
-
-            return response()->json(['message' => 'Invoice deleted successfully']);
-        } catch (\Exception $e) {
-            Log::error('Error deleting invoice: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to delete invoice'], 500);
-        }
-    }
-
-    /**
-     * Record a payment for an invoice
-     */
-    public function recordPayment(Request $request, $id)
-    {
-        try {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['error' => 'Unauthenticated'], 401);
-            }
-
-            $invoice = Invoice::where('company_id', $user->company_id)
-                ->findOrFail($id);
-
-            $validated = $request->validate([
-                'amount' => 'required|numeric|min:0.01',
-                'payment_method' => 'required|string',
-                'transaction_number' => 'nullable|string',
-                'notes' => 'nullable|string',
-                'apply_to_credit' => 'boolean',
-            ]);
-
-            if ($validated['amount'] > $invoice->balance) {
-                return response()->json(['error' => 'Payment amount exceeds invoice balance'], 422);
-            }
-
-            DB::beginTransaction();
-
-            $invoice->increment('paid_amount', $validated['amount']);
-            $invoice->decrement('balance', $validated['amount']);
-            $invoice = $invoice->fresh();
-
-            // Update status
-            if ($invoice->balance <= 0) {
-                $invoice->update(['status' => 'paid']);
-            } elseif ($invoice->status === 'draft') {
-                $invoice->update(['status' => 'sent']);
-            }
-
-            // If customer has credit and apply_to_credit is true, reduce their credit
-            if ($validated['apply_to_credit'] ?? false) {
-                $customer = $invoice->customer;
-                if ($customer->credit_balance > 0) {
-                    $creditToApply = min($validated['amount'], $customer->credit_balance);
-                    
-                    $balanceBefore = $customer->credit_balance;
-                    $customer->decrement('credit_balance', $creditToApply);
-                    
-                    // Log credit transaction
-                    \App\Models\CreditTransaction::create([
-                        'customer_id' => $customer->id,
-                        'company_id' => $user->company_id,
-                        'user_id' => $user->id,
-                        'type' => 'payment',
-                        'amount' => $creditToApply,
-                        'balance_before' => $balanceBefore,
-                        'balance_after' => $customer->fresh()->credit_balance,
-                        'transaction_number' => $validated['transaction_number'] ?? "INV-{$invoice->invoice_number}",
-                        'payment_method' => 'credit_application',
-                        'notes' => "Applied to invoice {$invoice->invoice_number}. " . ($validated['notes'] ?? ''),
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Payment recorded successfully',
-                'invoice' => $invoice->load('items', 'customer')
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error recording payment: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to record payment'], 500);
-        }
-    }
-
-    /**
-     * Generate unique invoice number
-     */
-    private function generateInvoiceNumber($companyId)
-    {
-        $prefix = 'INV-';
-        $year = date('Y');
-        $lastInvoice = Invoice::where('company_id', $companyId)
-            ->whereYear('created_at', $year)
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($lastInvoice) {
-            $lastNumber = (int) substr($lastInvoice->invoice_number, -6);
-            $newNumber = str_pad($lastNumber + 1, 6, '0', STR_PAD_LEFT);
-        } else {
-            $newNumber = '000001';
-        }
-
-        return $prefix . $year . '-' . $newNumber;
+        return response()->json(['success' => true]);
     }
 }
