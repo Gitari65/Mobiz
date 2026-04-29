@@ -209,7 +209,7 @@
                   </td>
                   <td>{{ product.unit || 'pcs' }}</td>
                   <td>
-                    <span class="price">{{ formatCurrency(product.price) }}</span>
+                    <span class="price">{{ formatCurrency(product.display_price ?? product.price) }}</span>
                   </td>
                   <td>
                     <span class="date">{{ formatDate(product.created_at) }}</span>
@@ -270,7 +270,7 @@
 
     <!-- Modals -->
     <!-- Delete Modal -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+    <div v-if="showDeleteModal" class="modal-overlay">
       <div class="modal delete-modal">
         <div class="modal-header">
           <h3>
@@ -297,7 +297,7 @@
     </div>
 
     <!-- Restock Modal -->
-    <div v-if="showReplenishModal" class="modal-overlay" @click.self="closeReplenishModal">
+    <div v-if="showReplenishModal" class="modal-overlay">
       <div class="modal restock-modal">
         <div class="modal-header">
           <h3>
@@ -317,7 +317,7 @@
                 <select v-model="replenishForm.product_id" required>
                   <option value="">Select Product</option>
                   <option v-for="product in products" :key="product.id" :value="product.id">
-                    {{ product.name }} (Stock: {{ product.stock }})
+                    {{ product.name }} (Stock: {{ product.stock }} {{ product.unit || 'pcs' }})
                   </option>
                 </select>
               </div>
@@ -493,7 +493,7 @@ export default {
     },
     totalInventoryValue() {
       return this.products.reduce((sum, product) => {
-        return sum + (parseFloat(product.price) * parseFloat(product.stock))
+        return sum + (parseFloat(product.display_price ?? product.price) * parseFloat(product.stock))
       }, 0)
     },
     lowStock() {
@@ -515,8 +515,29 @@ export default {
     async fetchInventory() {
       this.isLoading = true
       try {
-        const response = await axios.get('/api/products')
-        this.products = response.data.data || response.data || []
+        const response = await axios.get('/products')
+        const rawProducts = response.data.data || response.data || []
+        this.products = rawProducts.map(product => {
+          const saleUoms = Array.isArray(product.saleUoms) ? product.saleUoms : (Array.isArray(product.sale_uoms) ? product.sale_uoms : [])
+          const saleUom = product.saleUom || product.sale_uom || null
+          const purchaseUom = product.purchaseUom || product.purchase_uom || null
+          const baseUom = product.uom || product.base_uom || null
+          const defaultSaleUom = saleUoms.find(uom => Boolean(uom.pivot?.is_default)) || saleUoms[0] || saleUom || baseUom || purchaseUom
+          const displayUomId = defaultSaleUom?.id || product.uom_id || product.purchase_uom_id
+          const stockByUom = product.available_stock_by_uom || {}
+          const displayStock = displayUomId ? stockByUom[displayUomId] ?? stockByUom[String(displayUomId)] : null
+          const uomPrices = product.uom_prices
+          const displayPrice = displayUomId && uomPrices && typeof uomPrices === 'object' && !Array.isArray(uomPrices)
+            ? Number(uomPrices[displayUomId] ?? uomPrices[String(displayUomId)] ?? product.price ?? 0)
+            : Number(product.price ?? 0)
+
+          return {
+            ...product,
+            stock: Number(displayStock ?? product.base_stock_quantity ?? product.stock_quantity ?? 0),
+            unit: defaultSaleUom?.abbreviation || defaultSaleUom?.name || 'pcs',
+            display_price: displayPrice
+          }
+        })
       } catch (error) {
         console.error('Error fetching inventory:', error)
         this.products = []
@@ -665,7 +686,7 @@ export default {
         const payload = {
           items: this.replenishItems
         }
-        await axios.post('/api/inventory/restock', payload)
+        await axios.post('/inventory/restock', payload)
         await this.fetchInventory() // Refresh data
         this.closeReplenishModal()
       } catch (error) {

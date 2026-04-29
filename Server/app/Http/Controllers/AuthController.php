@@ -10,8 +10,11 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Cache;
+use App\Services\PriceGroupService;
+use App\Services\SubscriptionPlanService;
 use App\Mail\WelcomeOneTimePassword;
-
+use App\Mail\LoginOtp;
+use App\Mail\PasswordResetNotification;
 
 class AuthController extends Controller
 {
@@ -57,6 +60,9 @@ class AuthController extends Controller
             'details' => $request->business_details,
             'active' => false, // Pending
         ]);
+
+        PriceGroupService::ensureDefaultsForCompany($company->id);
+        SubscriptionPlanService::ensureCompanyDefaultSubscription($company->id);
 
         // Generate one-time temporary password (OTP)
         $otp = strtoupper(\Illuminate\Support\Str::random(8));
@@ -167,9 +173,9 @@ class AuthController extends Controller
             $user->otp_resend_limit_reset_at = null;
             $user->save();
 
-            // Send OTP email
+            // Send OTP email (for login verification)
             try {
-                Mail::to($user->email)->send(new WelcomeOneTimePassword($user, $otp));
+                Mail::to($user->email)->send(new LoginOtp($user, $otp));
                 Log::info('Login OTP sent', [
                     'user_id' => $user->id,
                     'email' => $user->email
@@ -384,9 +390,9 @@ class AuthController extends Controller
             }
             $user->save();
 
-            // Send OTP email
+            // Send OTP email (for login verification)
             try {
-                Mail::to($user->email)->send(new WelcomeOneTimePassword($user, $otp));
+                Mail::to($user->email)->send(new LoginOtp($user, $otp));
                 Log::info('Resent OTP via email', [
                     'user_id' => $user->id,
                     'email' => $user->email,
@@ -460,7 +466,7 @@ class AuthController extends Controller
 
             // Send OTP email
             try {
-                Mail::to($user->email)->send(new \App\Mail\WelcomeOneTimePassword($user, $otp));
+                Mail::to($user->email)->send(new \App\Mail\PasswordResetNotification($user, $otp));
                 Log::info('Password reset OTP sent', [
                     'user_id' => $user->id,
                     'email' => $user->email

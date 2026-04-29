@@ -2,11 +2,17 @@
   <div class="app-container" :class="{ 'auth-layout': isAuthRoute }">
     <!-- Sidebar only shows on authenticated routes -->
     <Sidebar v-if="!isAuthRoute" />
-    
-    <!-- Main content area -->
-    <main class="main-content" :class="{ 'full-width': isAuthRoute }">
-      <router-view />
-    </main>
+
+    <!-- Main content column -->
+    <div class="main-column" :class="{ 'full-width': isAuthRoute }">
+      <!-- Top bar -->
+      <TopBar v-if="!isAuthRoute" />
+
+      <!-- Page content -->
+      <main class="main-content">
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>
 
@@ -14,10 +20,10 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from './components/SideBarComponent.vue'
+import TopBar from './components/TopBarComponent.vue'
 
 const route = useRoute()
 
-// Check if current route is an auth route (like login)
 const isAuthRoute = computed(() => {
   return route.meta?.layout === 'auth' || route.path === '/login'
 })
@@ -37,6 +43,19 @@ const isAuthRoute = computed(() => {
 }
 
 /* Main app layout with sidebar */
+.main-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100vh;
+}
+
+.main-column.full-width {
+  width: 100vw;
+  height: 100vh;
+}
+
 .main-content {
   flex: 1;
   padding: 1.5rem;
@@ -44,8 +63,6 @@ const isAuthRoute = computed(() => {
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
-  height: 100vh;
-  max-height: 100vh;
   box-sizing: border-box;
 }
 
@@ -61,7 +78,7 @@ const isAuthRoute = computed(() => {
   bottom: 0;
 }
 
-.main-content.full-width {
+.main-column.full-width .main-content {
   padding: 0;
   background: transparent;
   overflow: hidden;
@@ -74,11 +91,11 @@ const isAuthRoute = computed(() => {
 }
 
 /* Smooth scrollbar for main content */
-.main-content:not(.full-width)::-webkit-scrollbar {
+.main-content::-webkit-scrollbar {
   width: 6px;
 }
 
-.main-content:not(.full-width)::-webkit-scrollbar-track {
+.main-content::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.05);
   border-radius: 3px;
 }

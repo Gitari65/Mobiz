@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
+  <div v-if="isOpen" class="modal-overlay">
     <div class="empties-modal">
       <!-- Header -->
       <div class="modal-header">
@@ -205,7 +205,7 @@
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
+    <div v-if="showDeleteConfirm" class="modal-overlay">
       <div class="confirm-modal">
         <div class="confirm-header">
           <i class="fas fa-exclamation-triangle"></i>

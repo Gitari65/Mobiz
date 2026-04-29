@@ -2,6 +2,11 @@
     namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Product;
+use App\Models\ProductPrice;
+use App\Models\UOM;
+use App\Services\UOMConversionService;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
@@ -169,30 +174,54 @@ class ProductController extends Controller
         $warehouse->delete();
         return response()->json(['message' => 'Warehouse deleted']);
     }
-    // Fetch all products
-    public function index()
+    // Fetch products (supports optional pagination via per_page).
+    public function index(Request $request)
     {
         try {
-            // Simple query first to test
-            $products = Product::query()->get();
-            
-            // Try to load relationships if basic query works
-            $products->load([
-                'warehouse', 
-                'uom', 
-                'creator', 
-                'editor', 
-                'company'
+            $query = Product::query()->with([
+                'warehouse',
+                'uom',
+                'saleUom',
+                'saleUoms',
+                'purchaseUom',
+                'creator',
+                'editor',
+                'company',
+                'prices.priceGroup',
+                'prices.uom',
             ]);
-            
-            // Load prices separately to avoid errors
-            try {
-                $products->load('prices.priceGroup');
-            } catch (\Exception $priceError) {
-                Log::warning('Could not load prices: ' . $priceError->getMessage());
+
+            $products = null;
+            $usePagination = $request->filled('per_page');
+
+            if ($usePagination) {
+                $perPage = max(10, min((int) $request->input('per_page', 50), 500));
+                $products = $query->orderByDesc('created_at')->paginate($perPage);
+                $items = $products->getCollection();
+            } else {
+                $items = $query->get();
             }
-            
-            return response()->json($products, 200);
+
+            $items->each(function ($product) {
+                $product->setAttribute('base_uom_id', $product->getBaseUomId());
+                $product->setAttribute('base_stock_quantity', (int) $product->stock_quantity);
+                $product->setAttribute('available_stock_by_uom', $product->getAvailableStockByUom());
+                $product->setAttribute('sale_uom_ids', $product->saleUoms->pluck('id')->all());
+                $product->setAttribute('uom_prices', $product->prices
+                    ->whereNull('price_group_id')
+                    ->whereNotNull('uom_id')
+                    ->mapWithKeys(function ($price) {
+                        return [(string) $price->uom_id => (float) $price->price];
+                    })
+                    ->all());
+            });
+
+            if ($usePagination) {
+                $products->setCollection($items);
+                return response()->json($products, 200);
+            }
+
+            return response()->json($items, 200);
         } catch (\Exception $e) {
             Log::error('Error fetching products: ' . $e->getMessage());
             Log::error($e->getTraceAsString());
@@ -226,9 +255,22 @@ class ProductController extends Controller
                 'description' => 'nullable|string|max:1000',
                 'warehouse_id' => 'nullable|exists:warehouses,id',
                 'uom_id' => 'nullable|exists:u_o_m_s,id',
+                'purchase_uom_id' => 'nullable|exists:u_o_m_s,id',
+                'conversion_ratio' => 'nullable|numeric|min:1',
+                'sale_uom_ids' => 'nullable|array',
+                'sale_uom_ids.*' => 'exists:u_o_m_s,id',
+                'uom_prices' => 'nullable|array',
+                'uom_prices.*' => 'nullable|numeric|min:0',
                 'prices' => 'nullable|array',
                 'prices.*' => 'numeric|min:0'
             ]);
+
+            // Store sale UOM IDs
+            $saleUomIds = $validated['sale_uom_ids'] ?? [];
+            unset($validated['sale_uom_ids']);
+
+            $uomPrices = $validated['uom_prices'] ?? [];
+            unset($validated['uom_prices']);
 
             // Store price group prices
             $pricesByGroup = $validated['prices'] ?? [];
@@ -247,6 +289,24 @@ class ProductController extends Controller
             // Create the product
             $product = Product::create($validated);
 
+            // Attach multiple sale UOMs if provided
+            if (!empty($saleUomIds)) {
+                $syncData = [];
+                foreach ($saleUomIds as $index => $uomId) {
+                    $syncData[$uomId] = [
+                        'conversion_ratio' => $this->resolveSaleUomConversionRatio(
+                            $validated['purchase_uom_id'] ?? $validated['uom_id'] ?? null,
+                            (int) $uomId,
+                            isset($validated['conversion_ratio']) ? (float) $validated['conversion_ratio'] : null
+                        ),
+                        'is_default' => $index === 0 // First one is default
+                    ];
+                }
+                $product->saleUoms()->sync($syncData);
+            }
+
+            $this->syncUomPrices($product, $uomPrices, $saleUomIds);
+
             // Save price group specific prices if provided
             if (!empty($pricesByGroup)) {
                 foreach ($pricesByGroup as $priceGroupId => $price) {
@@ -261,11 +321,26 @@ class ProductController extends Controller
             }
 
             // Load relationships for response
-            $product->load(['warehouse', 'uom', 'creator', 'editor', 'company', 'prices.priceGroup']);
+            $product->load(['warehouse', 'uom', 'saleUoms', 'purchaseUom', 'creator', 'editor', 'company', 'prices.priceGroup', 'prices.uom']);
+
+            // Append conversion information
+            $responseProduct = $product->toArray();
+            $responseProduct['sale_uom_ids'] = $product->saleUoms->pluck('id')->all();
+            $responseProduct['uom_prices'] = $product->prices
+                ->whereNull('price_group_id')
+                ->whereNotNull('uom_id')
+                ->mapWithKeys(function ($price) {
+                    return [(string) $price->uom_id => (float) $price->price];
+                })
+                ->all();
+            if ($product->purchase_uom_id) {
+                $responseProduct['stock_in_smallest_unit'] = $product->getStockInSmallestUnit();
+                $responseProduct['stock_in_all_sale_uoms'] = $product->getStockInAllSaleUoms();
+            }
 
             return response()->json([
                 'message' => 'Product created successfully',
-                'product' => $product
+                'product' => $responseProduct
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -520,6 +595,104 @@ class ProductController extends Controller
         }
     }
 
+    // CSV Upload from JSON array (frontend sends parsed CSV/Excel data as JSON)
+    public function csvUpload(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['error' => 'Unauthenticated'], 401);
+            }
+
+            // Validate that products is an array
+            $request->validate([
+                'products' => 'required|array|min:1|max:1000',
+                'products.*.name' => 'required|string|max:255',
+                'products.*.price' => 'required|numeric|min:0',
+                'products.*.stock_quantity' => 'required|integer|min:0',
+                'products.*.sku' => 'nullable|string|max:100',
+                'products.*.category' => 'nullable|string|max:100',
+                'products.*.brand' => 'nullable|string|max:100',
+                'products.*.cost_price' => 'nullable|numeric|min:0',
+                'products.*.low_stock_threshold' => 'nullable|integer|min:0',
+                'products.*.description' => 'nullable|string|max:1000',
+                'products.*.warehouse_id' => 'nullable|exists:warehouses,id',
+                'products.*.uom_id' => 'nullable|exists:u_o_m_s,id',
+                'products.*.prices' => 'nullable|array',
+                'products.*.prices.*' => 'numeric|min:0'
+            ]);
+
+            $products = $request->input('products');
+            $createdProducts = [];
+            $errors = [];
+
+            foreach ($products as $index => $productData) {
+                try {
+                    // Extract prices before creating product
+                    $pricesByGroup = isset($productData['prices']) ? $productData['prices'] : [];
+                    unset($productData['prices']);
+                    
+                    // Auto-generate SKU if not provided
+                    if (empty($productData['sku'])) {
+                        $productData['sku'] = $this->generateSKU($productData['name']);
+                    }
+
+                    // Check for duplicate SKU
+                    if (Product::where('sku', $productData['sku'])->exists()) {
+                        $productData['sku'] = $this->generateSKU($productData['name'], true);
+                    }
+
+                    // Add tracking fields
+                    $productData['company_id'] = $user->company_id;
+                    $productData['created_by'] = $user->id;
+                    $productData['updated_by'] = $user->id;
+
+                    $product = Product::create($productData);
+                    
+                    // Save price group specific prices if provided
+                    if (!empty($pricesByGroup)) {
+                        foreach ($pricesByGroup as $priceGroupId => $price) {
+                            if ($price !== null && $price !== '') {
+                                \App\Models\ProductPrice::create([
+                                    'product_id' => $product->id,
+                                    'price_group_id' => $priceGroupId,
+                                    'price' => $price
+                                ]);
+                            }
+                        }
+                    }
+                    
+                    // Load relationships
+                    $product->load(['warehouse', 'uom', 'creator', 'editor', 'company', 'prices.priceGroup']);
+                    $createdProducts[] = $product;
+
+                } catch (\Exception $e) {
+                    $errors[] = [
+                        'index' => $index,
+                        'product' => $productData['name'] ?? 'Unknown',
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            return response()->json([
+                'message' => 'CSV upload completed',
+                'created_count' => count($createdProducts),
+                'error_count' => count($errors),
+                'products' => $createdProducts,
+                'errors' => $errors
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('CSV validation failed: ' . $e->getMessage());
+            return response()->json(['error' => 'Invalid input', 'details' => $e->errors()], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to upload CSV: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to upload CSV'], 500);
+        }
+    }
+
     // Get product statistics
     public function getStatistics()
     {
@@ -545,9 +718,16 @@ class ProductController extends Controller
     public function getOutOfStockProducts()
     {
         try {
-            $cacheKey = 'out_of_stock_products_v1';
-            $outOfStockProducts = \Cache::remember($cacheKey, now()->addSeconds(30), function () {
-                return Product::where('stock_quantity', '<=', 0)
+            $user = Auth::user();
+            if (!$user || !$user->company_id) {
+                return response()->json([], 200);
+            }
+
+            $cacheKey = 'out_of_stock_products_v1:company_' . $user->company_id;
+            $outOfStockProducts = Cache::remember($cacheKey, now()->addSeconds(30), function () {
+                $user = Auth::user();
+                return Product::where('company_id', $user->company_id)
+                    ->where('stock_quantity', '<=', 0)
                     ->orderBy('updated_at', 'desc')
                     ->get(['id', 'name', 'sku', 'category', 'price', 'stock_quantity', 'updated_at']);
             });
@@ -578,8 +758,23 @@ class ProductController extends Controller
     public function show($id)
     {
         try {
-            $product = Product::with(['warehouse', 'uom', 'creator', 'editor', 'company', 'prices.priceGroup'])->findOrFail($id);
-            return response()->json($product);
+            $product = Product::with(['warehouse', 'uom', 'purchaseUom', 'saleUoms', 'creator', 'editor', 'company', 'prices.priceGroup'])->findOrFail($id);
+            
+            $responseProduct = $product->toArray();
+            
+            // Append conversion information if purchase UOM is set
+            if ($product->purchase_uom_id) {
+                $responseProduct['stock_in_smallest_unit'] = $product->getStockInSmallestUnit();
+                $responseProduct['stock_in_all_sale_uoms'] = $product->getStockInAllSaleUoms();
+                $responseProduct['replenishment_needed'] = $product->getReplenishmentNeededInSmallestUnit();
+                
+                // Add margin with conversion if cost_price is set
+                if ($product->cost_price && $product->purchase_uom_id) {
+                    $responseProduct['margin_with_conversion'] = $product->getMarginWithConversion();
+                }
+            }
+            
+            return response()->json($responseProduct);
         } catch (\Exception $e) {
             Log::error("Error showing product with ID {$id}: " . $e->getMessage());
             return response()->json(['error' => 'Product not found'], 404);
@@ -622,9 +817,23 @@ class ProductController extends Controller
                 'description' => 'sometimes|nullable|string|max:1000',
                 'warehouse_id' => 'sometimes|nullable|exists:warehouses,id',
                 'uom_id' => 'sometimes|nullable|exists:u_o_m_s,id',
+                'purchase_uom_id' => 'sometimes|nullable|exists:u_o_m_s,id',
+                'sale_uom_id' => 'sometimes|nullable|exists:u_o_m_s,id',
+                'conversion_ratio' => 'sometimes|nullable|numeric|min:1',
+                'sale_uom_ids' => 'sometimes|array',
+                'sale_uom_ids.*' => 'exists:u_o_m_s,id',
+                'uom_prices' => 'nullable|array',
+                'uom_prices.*' => 'nullable|numeric|min:0',
                 'prices' => 'nullable|array',
                 'prices.*' => 'numeric|min:0'
             ]);
+
+            // Store sale UOM IDs if provided
+            $saleUomIds = $validated['sale_uom_ids'] ?? null;
+            unset($validated['sale_uom_ids']);
+
+            $uomPrices = $validated['uom_prices'] ?? null;
+            unset($validated['uom_prices']);
 
             // Handle price group specific prices
             $pricesByGroup = $validated['prices'] ?? [];
@@ -634,6 +843,31 @@ class ProductController extends Controller
             $validated['updated_by'] = $user->id;
 
             $product->update($validated);
+
+            // Sync multiple sale UOMs if provided
+            if ($saleUomIds !== null) {
+                $syncData = [];
+                $purchaseUomId = $validated['purchase_uom_id']
+                    ?? $product->purchase_uom_id
+                    ?? $validated['uom_id']
+                    ?? $product->uom_id;
+
+                foreach ($saleUomIds as $index => $uomId) {
+                    $syncData[$uomId] = [
+                        'conversion_ratio' => $this->resolveSaleUomConversionRatio(
+                            $purchaseUomId,
+                            (int) $uomId,
+                            isset($validated['conversion_ratio']) ? (float) $validated['conversion_ratio'] : null
+                        ),
+                        'is_default' => $index === 0 // First one is default
+                    ];
+                }
+                $product->saleUoms()->sync($syncData);
+            }
+
+            if ($uomPrices !== null || $saleUomIds !== null) {
+                $this->syncUomPrices($product, $uomPrices ?? [], $saleUomIds ?? $product->saleUoms()->pluck('u_o_m_s.id')->all());
+            }
 
             // Update price group specific prices
             if (!empty($pricesByGroup)) {
@@ -648,11 +882,31 @@ class ProductController extends Controller
             }
             
             // Load relationships for response
-            $product->load(['warehouse', 'uom', 'creator', 'editor', 'company', 'prices.priceGroup']);
+            $product->load(['warehouse', 'uom', 'saleUoms', 'purchaseUom', 'creator', 'editor', 'company', 'prices.priceGroup', 'prices.uom']);
+            
+            // Append conversion information
+            $responseProduct = $product->toArray();
+            $responseProduct['sale_uom_ids'] = $product->saleUoms->pluck('id')->all();
+            $responseProduct['uom_prices'] = $product->prices
+                ->whereNull('price_group_id')
+                ->whereNotNull('uom_id')
+                ->mapWithKeys(function ($price) {
+                    return [(string) $price->uom_id => (float) $price->price];
+                })
+                ->all();
+            if ($product->purchase_uom_id) {
+                $responseProduct['stock_in_smallest_unit'] = $product->getStockInSmallestUnit();
+                $responseProduct['stock_in_all_sale_uoms'] = $product->getStockInAllSaleUoms();
+                $responseProduct['replenishment_needed'] = $product->getReplenishmentNeededInSmallestUnit();
+                
+                if ($product->cost_price && $product->purchase_uom_id) {
+                    $responseProduct['margin_with_conversion'] = $product->getMarginWithConversion();
+                }
+            }
             
             return response()->json([
                 'message' => 'Product updated successfully',
-                'product' => $product
+                'product' => $responseProduct
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -676,6 +930,128 @@ class ProductController extends Controller
             Log::error("Error deleting product with ID {$id}: " . $e->getMessage());
             return response()->json(['error' => 'Failed to delete product'], 500);
         }
+    }
+
+    private function syncUomPrices(Product $product, array $uomPrices, array $saleUomIds): void
+    {
+        $allowedUomIds = array_values(array_unique(array_map('intval', $saleUomIds)));
+
+        ProductPrice::where('product_id', $product->id)
+            ->whereNull('price_group_id')
+            ->whereNotNull('uom_id')
+            ->delete();
+
+        foreach ($uomPrices as $uomId => $price) {
+            $uomId = (int) $uomId;
+            if (!in_array($uomId, $allowedUomIds, true)) {
+                continue;
+            }
+
+            if ($price === null || $price === '') {
+                continue;
+            }
+
+            ProductPrice::create([
+                'product_id' => $product->id,
+                'uom_id' => $uomId,
+                'price_group_id' => null,
+                'price' => $price,
+            ]);
+        }
+    }
+
+    private function resolveSaleUomConversionRatio(?int $purchaseUomId, int $saleUomId, ?float $fallbackRatio = null): float
+    {
+        if (!$purchaseUomId || !$saleUomId) {
+            return max(1.0, (float) ($fallbackRatio ?? 1));
+        }
+
+        if ((int) $purchaseUomId === (int) $saleUomId) {
+            return 1.0;
+        }
+
+        $globalFactor = UOMConversionService::resolveConversionFactor((int) $purchaseUomId, (int) $saleUomId);
+        if ($globalFactor !== null && $globalFactor > 0) {
+            return round((float) $globalFactor, 4);
+        }
+
+        $inferred = $this->inferSaleUomRatioFromLabels((int) $purchaseUomId, (int) $saleUomId);
+        if ($inferred !== null && $inferred > 0) {
+            return round($inferred, 4);
+        }
+
+        return max(1.0, (float) ($fallbackRatio ?? 1));
+    }
+
+    private function inferSaleUomRatioFromLabels(int $purchaseUomId, int $saleUomId): ?float
+    {
+        $purchaseUom = UOM::find($purchaseUomId);
+        $saleUom = UOM::find($saleUomId);
+
+        if (!$purchaseUom || !$saleUom) {
+            return null;
+        }
+
+        if ($purchaseUom->type && $saleUom->type && $purchaseUom->type !== $saleUom->type) {
+            return null;
+        }
+
+        $purchaseScale = $this->parseUomScale($purchaseUom->abbreviation, $purchaseUom->type)
+            ?? $this->parseUomScale($purchaseUom->name, $purchaseUom->type);
+        $saleScale = $this->parseUomScale($saleUom->abbreviation, $saleUom->type)
+            ?? $this->parseUomScale($saleUom->name, $saleUom->type);
+
+        if (!$purchaseScale || !$saleScale) {
+            return null;
+        }
+
+        $ratio = $purchaseScale / $saleScale;
+        return $ratio > 0 ? $ratio : null;
+    }
+
+    private function parseUomScale(?string $rawValue, ?string $type): ?float
+    {
+        $value = strtolower(trim((string) $rawValue));
+        if ($value === '') {
+            return null;
+        }
+
+        $normalized = str_replace([' ', '_'], '', $value);
+
+        if (!preg_match('/^(\d+(?:\.\d+)?)?([a-z]+)$/', $normalized, $matches)) {
+            return null;
+        }
+
+        $quantity = isset($matches[1]) && $matches[1] !== '' ? (float) $matches[1] : 1.0;
+        $unit = $matches[2];
+        $type = strtolower((string) $type);
+
+        $unitScales = match ($type) {
+            'volume' => [
+                'ml' => 0.001,
+                'cl' => 0.01,
+                'dl' => 0.1,
+                'l' => 1.0,
+            ],
+            'weight' => [
+                'mg' => 0.000001,
+                'g' => 0.001,
+                'kg' => 1.0,
+            ],
+            'length' => [
+                'mm' => 0.001,
+                'cm' => 0.01,
+                'm' => 1.0,
+                'km' => 1000.0,
+            ],
+            default => [],
+        };
+
+        if (!array_key_exists($unit, $unitScales)) {
+            return null;
+        }
+
+        return $quantity * (float) $unitScales[$unit];
     }
 
     /**
@@ -848,7 +1224,7 @@ class ProductController extends Controller
     {
         try {
             $product = Product::findOrFail($productId);
-            $user = auth()->user();
+            $user = Auth::user();
             // Fallback to the product's company when the request is unauthenticated
             $companyId = $user ? $user->company_id : $product->company_id;
 

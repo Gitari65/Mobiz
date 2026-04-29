@@ -91,20 +91,36 @@
             </div>
             <div class="product-info">
               <h3 class="product-name">{{ product.name }}</h3>
+              <div v-if="product.category" class="product-category">
+                <i class="fas fa-tag"></i>
+                <span>{{ product.category }}</span>
+              </div>
               <div class="product-price">
                 <span class="currency">Ksh</span>
-                <span class="amount">{{ formatPrice(product.price) }}</span>
+                <span class="amount">{{ formatPrice(getProductDefaultDisplayPrice(product)) }}</span>
               </div>
-              <div class="stock-info" :class="getStockClass(product.stock_quantity)">
+              <div v-if="getProductPricingWarning(product)" class="pricing-warning-badge">
+                {{ getProductPricingWarning(product) }}
+              </div>
+              <div class="stock-info" :class="getStockClass(getAvailableQuantity(product))">
                 <i class="fas fa-boxes"></i>
-                <span>{{ product.stock_quantity }} in stock</span>
+                <span>
+                  {{ getAvailableQuantity(product) }}
+                  {{ getProductDisplayUom(product) }} in stock
+                </span>
+              </div>
+              <!-- Show conversion info if bulk purchase is configured -->
+              <div v-if="product.sale_uom_id && product.purchase_uom_id" class="conversion-info">
+                <small>
+                  Buy: {{ product.conversion_ratio }} x {{ getUomLabel(product, 'sale') }} = 1 x {{ getUomLabel(product, 'purchase') }}
+                </small>
               </div>
             </div>
             <div class="add-btn">
               <i class="fas fa-plus"></i>
             </div>
-            <div class="stock-badge" :class="getStockClass(product.stock_quantity)">
-              {{ getStockStatus(product.stock_quantity) }}
+            <div class="stock-badge" :class="getStockClass(getAvailableQuantity(product))">
+              {{ getStockStatus(getAvailableQuantity(product)) }}
             </div>
           </div>
 
@@ -144,12 +160,108 @@
             <small>Add products to get started</small>
           </div>
 
+          <!-- UoM Selection Modal -->
+          <div v-if="showUoMSelector" class="modal-overlay">
+            <div class="modal-content" @click.stop>
+              <h3>Select Unit of Measure</h3>
+              <p class="modal-subtitle">Choose how to sell {{ uoMSelectorProduct?.name }}</p>
+              <div class="uom-options">
+                <!-- Show all sale UOMs if available (new multi-UOM system) -->
+                <button
+                  v-for="uom in getProductSaleUoms(uoMSelectorProduct)"
+                  :key="uom.id"
+                  @click="selectUoM(uom)"
+                  class="uom-option"
+                >
+                  <i class="fas fa-droplet"></i>
+                  <strong>{{ uom.name }}</strong>
+                  <small>{{ uom.abbreviation }} - Ksh {{ formatPrice(getEffectiveCartItemPrice(uoMSelectorProduct, uom.id, getUomSpecificPrice(uoMSelectorProduct, uom.id))) }}</small>
+                </button>
+                <!-- Fallback to legacy single sale UOM -->
+                <button
+                  v-if="!getProductSaleUoms(uoMSelectorProduct).length && getProductSaleUom(uoMSelectorProduct)"
+                  @click="selectUoM(getProductSaleUom(uoMSelectorProduct))"
+                  class="uom-option"
+                >
+                  <i class="fas fa-droplet"></i>
+                  <strong>{{ getProductSaleUom(uoMSelectorProduct)?.name }}</strong>
+                  <small>{{ getProductSaleUom(uoMSelectorProduct)?.abbreviation }} - Ksh {{ formatPrice(getEffectiveCartItemPrice(uoMSelectorProduct, getProductSaleUom(uoMSelectorProduct)?.id, getUomSpecificPrice(uoMSelectorProduct, getProductSaleUom(uoMSelectorProduct)?.id))) }}</small>
+                </button>
+                <button
+                  v-if="!getProductSaleUoms(uoMSelectorProduct).length && !getProductSaleUom(uoMSelectorProduct) && getProductPurchaseUom(uoMSelectorProduct)"
+                  @click="selectUoM(getProductPurchaseUom(uoMSelectorProduct))"
+                  class="uom-option"
+                >
+                  <i class="fas fa-boxes"></i>
+                  <strong>{{ getProductPurchaseUom(uoMSelectorProduct)?.name }}</strong>
+                  <small>{{ getProductPurchaseUom(uoMSelectorProduct)?.abbreviation }} - Ksh {{ formatPrice(getEffectiveCartItemPrice(uoMSelectorProduct, getProductPurchaseUom(uoMSelectorProduct)?.id, getUomSpecificPrice(uoMSelectorProduct, getProductPurchaseUom(uoMSelectorProduct)?.id))) }}</small>
+                </button>
+                <button
+                  v-if="!getProductSaleUoms(uoMSelectorProduct).length && !getProductSaleUom(uoMSelectorProduct) && !getProductPurchaseUom(uoMSelectorProduct) && getProductBaseUom(uoMSelectorProduct)"
+                  @click="selectUoM(getProductBaseUom(uoMSelectorProduct))"
+                  class="uom-option"
+                >
+                  <i class="fas fa-ruler"></i>
+                  <strong>{{ getProductBaseUom(uoMSelectorProduct)?.name }}</strong>
+                  <small>{{ getProductBaseUom(uoMSelectorProduct)?.abbreviation }} - Ksh {{ formatPrice(getEffectiveCartItemPrice(uoMSelectorProduct, getProductBaseUom(uoMSelectorProduct)?.id, getUomSpecificPrice(uoMSelectorProduct, getProductBaseUom(uoMSelectorProduct)?.id))) }}</small>
+                </button>
+              </div>
+              <button @click="showUoMSelector = false" class="modal-close-btn">Cancel</button>
+            </div>
+          </div>
+
           <!-- Cart Items -->
           <div v-else class="cart-items">
-            <div v-for="item in cart" :key="item.id" class="cart-item">
+            <div class="cart-actions-row">
+              <span class="selection-count">
+                {{ selectedCartItemIds.length }} selected
+              </span>
+              <div class="cart-actions-buttons">
+                <button
+                  type="button"
+                  class="cart-action-btn"
+                  @click="deleteSelectedCartItems"
+                  :disabled="selectedCartItemIds.length === 0"
+                >
+                  <i class="fas fa-trash"></i>
+                  Delete Selected
+                </button>
+                <button
+                  type="button"
+                  class="cart-action-btn danger"
+                  @click="clearCart"
+                  :disabled="cart.length === 0"
+                >
+                  <i class="fas fa-broom"></i>
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            <div
+              v-for="item in cart"
+              :key="item.cart_uid"
+              class="cart-item"
+              :class="{ selected: selectedCartItemIds.includes(item.cart_uid) }"
+            >
+              <div class="item-select">
+                <input
+                  type="checkbox"
+                  :checked="selectedCartItemIds.includes(item.cart_uid)"
+                  @change="toggleCartItemSelection(item.cart_uid)"
+                />
+              </div>
               <div class="item-info">
                 <h4>{{ item.name }}</h4>
                 <p class="item-price">Ksh {{ formatPrice(item.price) }}</p>
+                <p class="item-uom-label">Selling as: {{ getCartItemUomLabel(item) }}</p>
+                <div v-if="hasMultipleCartItemUoms(item)" class="item-uom-selector">
+                  <select v-model="item.uom_id" class="uom-select" @change="updateItemUoM(item)">
+                    <option v-for="uom in getCartItemUomOptions(item)" :key="uom.id" :value="uom.id">
+                      {{ getUomOptionLabel(getProduct(item.id), uom) }}
+                    </option>
+                  </select>
+                </div>
               </div>
               <div class="item-controls">
                 <button @click="decreaseQuantity(item)" class="qty-btn">
@@ -163,9 +275,25 @@
               <div class="item-total">
                 Ksh {{ formatPrice(item.price * item.quantity) }}
               </div>
-              <button @click="removeFromCart(item.id)" class="remove-btn">
-                <i class="fas fa-trash"></i>
-              </button>
+              <div class="item-actions">
+                <button @click="startEditCartItem(item)" class="edit-btn" title="Edit item">
+                  <i class="fas fa-pen"></i>
+                </button>
+                <button @click="removeFromCart(item.cart_uid)" class="remove-btn" title="Delete item">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+
+              <div v-if="editingCartItemId === item.cart_uid" class="item-edit-row">
+                <div class="edit-field">
+                  <label>Qty</label>
+                  <input type="number" min="1" step="1" v-model.number="editCartForm.quantity" />
+                </div>
+                <div class="edit-actions">
+                  <button type="button" class="save-edit-btn" @click="applyCartItemEdit(item)">Save</button>
+                  <button type="button" class="cancel-edit-btn" @click="cancelCartItemEdit">Cancel</button>
+                </div>
+              </div>
             </div>
 
             <!-- Cart Summary -->
@@ -218,6 +346,49 @@
                     step="0.01"
                     min="0"
                   />
+                </div>
+              </div>
+
+              <div v-if="isMpesaPayment" class="mpesa-panel">
+                <div class="form-group">
+                  <label>M-Pesa Phone Number</label>
+                  <input 
+                    type="tel"
+                    v-model="paymentForm.mpesaPhoneNumber"
+                    placeholder="e.g. 0712345678 or 254712345678"
+                  />
+                </div>
+
+                <div class="mpesa-actions">
+                  <button
+                    type="button"
+                    class="mpesa-btn"
+                    @click="initiateMpesaPayment"
+                    :disabled="submitting || paymentForm.amountPaid <= 0 || !paymentForm.mpesaPhoneNumber || paymentForm.mpesaStatus === 'initiating'"
+                  >
+                    <i :class="paymentForm.mpesaStatus === 'initiating' ? 'fas fa-spinner fa-spin' : 'fas fa-mobile-alt'"></i>
+                    {{ paymentForm.mpesaCheckoutRequestId ? 'Re-initiate STK Push' : 'Initiate STK Push' }}
+                  </button>
+                  <button
+                    v-if="paymentForm.mpesaCheckoutRequestId"
+                    type="button"
+                    class="mpesa-btn secondary"
+                    @click="checkMpesaPaymentStatus"
+                    :disabled="submitting || paymentForm.mpesaStatus === 'checking'"
+                  >
+                    <i :class="paymentForm.mpesaStatus === 'checking' ? 'fas fa-spinner fa-spin' : 'fas fa-sync-alt'"></i>
+                    Check Status
+                  </button>
+                </div>
+
+                <div v-if="paymentForm.mpesaCheckoutRequestId" class="mpesa-status-card" :class="mpesaStatusClass">
+                  <div class="mpesa-status-top">
+                    <strong>M-Pesa Status:</strong>
+                    <span class="mpesa-status-pill">{{ paymentForm.mpesaStatusLabel }}</span>
+                  </div>
+                  <p v-if="paymentForm.mpesaCustomerMessage" class="mpesa-status-text">{{ paymentForm.mpesaCustomerMessage }}</p>
+                  <p v-if="paymentForm.mpesaReceiptNumber" class="mpesa-status-text">Receipt: <strong>{{ paymentForm.mpesaReceiptNumber }}</strong></p>
+                  <p class="mpesa-status-text subtle">Checkout ID: {{ paymentForm.mpesaCheckoutRequestId }}</p>
                 </div>
               </div>
 
@@ -343,6 +514,12 @@
           <div class="receipt-paper">
             <!-- Receipt Header (uses printer settings; shows placeholders if not edited) -->
             <div class="receipt-business-header">
+              <img
+                v-if="printerSettings.show_logo && printerSettings.receipt_logo_url"
+                :src="printerSettings.receipt_logo_url"
+                alt="Business Logo"
+                class="receipt-company-logo"
+              />
               <template v-if="headerLines.length">
                 <h1 v-if="headerLines[0]" class="receipt-title">{{ headerLines[0] }}</h1>
                 <p v-for="(line, idx) in headerLines.slice(1)" :key="idx" class="receipt-subline">{{ line }}</p>
@@ -353,9 +530,14 @@
             <!-- Sale Info -->
             <div class="receipt-sale-info">
               <p><strong>Receipt #:</strong> {{ receiptData.receiptNumber }}</p>
+              <p v-if="receiptData.invoiceNumber"><strong>Invoice #:</strong> {{ receiptData.invoiceNumber }}</p>
               <p><strong>Date:</strong> {{ receiptData.date }}</p>
               <p><strong>Time:</strong> {{ receiptData.time }}</p>
               <p v-if="receiptData.customer"><strong>Customer:</strong> {{ receiptData.customer }}</p>
+              <p><strong>Payment:</strong> {{ receiptData.paymentMethod || 'Cash' }}</p>
+              <p v-if="receiptData.mpesaPhoneNumber"><strong>M-Pesa Phone:</strong> {{ receiptData.mpesaPhoneNumber }}</p>
+              <p v-if="receiptData.mpesaReceiptNumber"><strong>M-Pesa Receipt:</strong> {{ receiptData.mpesaReceiptNumber }}</p>
+              <p v-if="receiptData.mpesaCheckoutRequestId"><strong>Checkout ID:</strong> {{ receiptData.mpesaCheckoutRequestId }}</p>
               <div class="receipt-divider">═══════════════════════════</div>
             </div>
 
@@ -370,7 +552,7 @@
               <div class="receipt-divider-thin">───────────────────────────</div>
               
               <div v-for="item in receiptData.items" :key="item.id" class="receipt-item">
-                <span class="item-name">{{ item.name }}</span>
+                <span class="item-name">{{ item.name }} <small v-if="item.uom">({{ item.uom }})</small></span>
                 <span class="item-qty">{{ item.quantity }}</span>
                 <span class="item-price">{{ item.price }}</span>
                 <span class="item-total">{{ (item.price * item.quantity).toFixed(2) }}</span>
@@ -452,8 +634,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import axios from 'axios'
+import { cachedGet } from '../../services/api'
 
 // State
 const products = ref([])
@@ -465,6 +648,7 @@ const searchQuery = ref('')
 const categoryFilter = ref('')
 const stockFilter = ref('all')
 const promoRefreshTimeout = ref(null)
+const cartCacheSaveTimeout = ref(null)
 
 const alert = ref({
   show: false,
@@ -477,12 +661,18 @@ const selectedCustomerId = ref('')
 const barcodeInput = ref('')
 const printerConnected = ref(false)
 const paymentMethods = ref([])
+const selectedCartItemIds = ref([])
+const editingCartItemId = ref(null)
+const editCartForm = ref({
+  quantity: 1
+})
 
 // Printer and Tax settings
 const printerSettings = ref({
   header_message: '',
   footer_message: '',
   show_logo: true,
+  receipt_logo_url: null,
   show_taxes: true,
   show_discounts: true,
   paper_size: '58mm',
@@ -498,15 +688,126 @@ const saleForm = ref({
 
 const paymentForm = ref({
   amountPaid: 0,
-  paymentMethod: 'Cash'
+  paymentMethod: 'Cash',
+  mpesaPhoneNumber: '',
+  mpesaCheckoutRequestId: '',
+  mpesaMerchantRequestId: '',
+  mpesaReceiptNumber: '',
+  mpesaCustomerMessage: '',
+  mpesaStatus: 'idle',
+  mpesaStatusLabel: 'Not Started'
 })
 
 const promoDiscount = ref(0)
 const appliedPromos = ref([])
 
+// UoM Selection Modal
+const showUoMSelector = ref(false)
+const uoMSelectorProduct = ref(null)
+const pendingCartItem = ref(null)
+
 const showReceipt = ref(false)
 const receiptData = ref({})
 const receiptContent = ref(null)
+
+// Cart cache (persists cart across menu/page navigation for a short period)
+const CART_CACHE_TTL_MS = 1000 * 60 * 60 * 12 // 12 hours
+
+function getCartCacheKey() {
+  try {
+    const raw = localStorage.getItem('userData')
+    if (!raw) return 'pos-cart-cache-anonymous'
+    const user = JSON.parse(raw)
+    const companyId = user?.company_id || 'no-company'
+    const userId = user?.id || 'no-user'
+    return `pos-cart-cache-${companyId}-${userId}`
+  } catch (_e) {
+    return 'pos-cart-cache-anonymous'
+  }
+}
+
+function clearCartCache() {
+  localStorage.removeItem(getCartCacheKey())
+}
+
+function generateCartItemUid(productId, uomId) {
+  return `${productId}-${uomId || 'base'}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function normalizeCartItems(items) {
+  if (!Array.isArray(items)) return []
+  return items.map((item) => ({
+    ...item,
+    quantity: Math.max(1, Number(item.quantity) || 1),
+    price: Math.max(0, Number(item.price) || 0),
+    cart_uid: item.cart_uid || generateCartItemUid(item.id, item.uom_id)
+  }))
+}
+
+function saveCartCache() {
+  try {
+    const payload = {
+      savedAt: Date.now(),
+      expiresAt: Date.now() + CART_CACHE_TTL_MS,
+      cart: normalizeCartItems(cart.value),
+      selectedCustomerId: selectedCustomerId.value,
+      saleForm: saleForm.value,
+      paymentForm: paymentForm.value,
+      cartOpen: cartOpen.value
+    }
+    localStorage.setItem(getCartCacheKey(), JSON.stringify(payload))
+  } catch (_e) {
+    // Ignore cache write failures (e.g., private mode/quota)
+  }
+}
+
+function scheduleCartCacheSave() {
+  if (cartCacheSaveTimeout.value) {
+    clearTimeout(cartCacheSaveTimeout.value)
+  }
+  cartCacheSaveTimeout.value = setTimeout(() => {
+    saveCartCache()
+  }, 250)
+}
+
+function restoreCartCache() {
+  try {
+    const raw = localStorage.getItem(getCartCacheKey())
+    if (!raw) return
+
+    const payload = JSON.parse(raw)
+    if (!payload || !Array.isArray(payload.cart)) {
+      clearCartCache()
+      return
+    }
+
+    if (payload.expiresAt && Date.now() > payload.expiresAt) {
+      clearCartCache()
+      return
+    }
+
+    cart.value = normalizeCartItems(payload.cart)
+    selectedCustomerId.value = payload.selectedCustomerId || ''
+    saleForm.value = {
+      customer_name: payload.saleForm?.customer_name || '',
+      notes: payload.saleForm?.notes || ''
+    }
+    paymentForm.value = {
+      amountPaid: Number(payload.paymentForm?.amountPaid || 0),
+      paymentMethod: payload.paymentForm?.paymentMethod || 'Cash',
+      mpesaPhoneNumber: payload.paymentForm?.mpesaPhoneNumber || '',
+      mpesaCheckoutRequestId: payload.paymentForm?.mpesaCheckoutRequestId || '',
+      mpesaMerchantRequestId: payload.paymentForm?.mpesaMerchantRequestId || '',
+      mpesaReceiptNumber: payload.paymentForm?.mpesaReceiptNumber || '',
+      mpesaCustomerMessage: payload.paymentForm?.mpesaCustomerMessage || '',
+      mpesaStatus: payload.paymentForm?.mpesaStatus || 'idle',
+      mpesaStatusLabel: payload.paymentForm?.mpesaStatusLabel || 'Not Started'
+    }
+    cartOpen.value = Boolean(payload.cartOpen || payload.cart?.length)
+  } catch (_e) {
+    clearCartCache()
+  }
+}
 
 // Printer-friendly display helpers: show configured text (including placeholders) or sensible defaults when empty
 const headerLines = computed(() => {
@@ -611,6 +912,19 @@ const isCreditPaymentEnabled = computed(() => {
   )
 })
 
+const isMpesaPayment = computed(() => {
+  const normalized = String(paymentForm.value.paymentMethod || '').toLowerCase().trim()
+  return ['m-pesa', 'mpesa', 'm pesa'].includes(normalized)
+})
+
+const mpesaStatusClass = computed(() => {
+  const status = paymentForm.value.mpesaStatus
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'failed'
+  if (status === 'pending' || status === 'initiating' || status === 'checking') return 'pending'
+  return 'idle'
+})
+
 const creditBlockReason = computed(() => {
   // Only show if cart has items and payment is less than total
   if (cart.value.length === 0 || balanceDue.value <= 0) return ''
@@ -648,6 +962,11 @@ const hasActiveFilters = computed(() => {
 
 const canProcessSale = computed(() => {
   if (cart.value.length === 0) return false
+  if (isMpesaPayment.value) {
+    if (paymentForm.value.amountPaid <= 0) return false
+    if (!paymentForm.value.mpesaPhoneNumber) return false
+    if (paymentForm.value.mpesaStatus !== 'success') return false
+  }
   if (paymentForm.value.amountPaid >= netTotal.value) return true
   if (!selectedCustomerId.value) return false
   return !creditBlockReason.value // block if credit rules fail
@@ -683,8 +1002,28 @@ const changeIcon = computed(() => {
   return 'fas fa-money-bill-wave'
 })
 
+watch(() => paymentForm.value.paymentMethod, (newValue, oldValue) => {
+  if (newValue !== oldValue) {
+    resetMpesaState()
+  }
+})
+
+watch(() => paymentForm.value.amountPaid, (newValue, oldValue) => {
+  if (isMpesaPayment.value && Number(newValue) !== Number(oldValue) && paymentForm.value.mpesaCheckoutRequestId) {
+    resetMpesaState({ keepPhone: true })
+  }
+})
+
+watch(() => paymentForm.value.mpesaPhoneNumber, (newValue, oldValue) => {
+  if (isMpesaPayment.value && newValue !== oldValue && paymentForm.value.mpesaCheckoutRequestId) {
+    resetMpesaState({ keepPhone: true })
+    paymentForm.value.mpesaPhoneNumber = newValue
+  }
+})
+
 // Fetch products on mount
 onMounted(() => {
+  restoreCartCache()
   fetchProducts()
   fetchCustomers()
   fetchPaymentMethods()
@@ -692,11 +1031,40 @@ onMounted(() => {
   fetchTaxConfigs()
 })
 
+onBeforeUnmount(() => {
+  if (promoRefreshTimeout.value) {
+    clearTimeout(promoRefreshTimeout.value)
+  }
+  if (cartCacheSaveTimeout.value) {
+    clearTimeout(cartCacheSaveTimeout.value)
+  }
+})
+
+watch(
+  [cart, selectedCustomerId, saleForm, paymentForm, cartOpen],
+  () => {
+    // Keep empty cart state when user has intentionally cleared everything.
+    scheduleCartCacheSave()
+  },
+  { deep: true }
+)
+
+watch(selectedCustomerId, async () => {
+  if (!applyCustomerPricingToCart()) {
+    selectedCustomerId.value = ''
+    return
+  }
+  await refreshPromotions()
+})
+
 async function fetchProducts() {
   loading.value = true
   try {
-    const res = await axios.get('/products')
-    products.value = res.data
+    const data = await cachedGet('/products', {
+      params: { with: 'saleUom,purchaseUom,uom' },
+      ttlMs: 60 * 1000
+    })
+    products.value = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : [])
     if (products.value.length === 0) {
       showAlert('No products available. Add products to start making sales.', 'info')
     }
@@ -710,8 +1078,10 @@ async function fetchProducts() {
 
 async function fetchCustomers() {
   try {
-    const res = await axios.get('/customers')
-    customers.value = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : [])
+    const data = await cachedGet('/customers', {
+      ttlMs: 60 * 1000
+    })
+    customers.value = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : [])
   } catch (err) {
     console.error('❌ Failed to fetch customers', err)
     console.error('Error details:', err.response?.data)
@@ -724,17 +1094,20 @@ async function fetchPaymentMethods() {
     const res = await axios.get('/api/payment-methods/enabled')
     paymentMethods.value = Array.isArray(res.data) ? res.data : []
     
-    // Set default payment method to first enabled method
-    if (paymentMethods.value.length > 0) {
+    // Keep the current selection if still available; otherwise pick first enabled.
+    const hasCurrent = paymentMethods.value.some(pm => pm.name === paymentForm.value.paymentMethod)
+    if (!hasCurrent && paymentMethods.value.length > 0) {
       paymentForm.value.paymentMethod = paymentMethods.value[0].name
+    } else if (paymentMethods.value.length === 0) {
+      paymentForm.value.paymentMethod = 'Cash'
     }
   } catch (err) {
-    console.warn('❌ Failed to fetch payment methods, using defaults', err)
-    // Fallback to defaults if API fails
+    console.warn('❌ Failed to fetch payment methods, using cash-only fallback', err)
+    // Never reintroduce subscription-gated methods on the client fallback.
     paymentMethods.value = [
-      { id: 1, name: 'Cash', description: 'Cash payment' },
-      { id: 2, name: 'M-Pesa', description: 'Mobile money' }
+      { id: 1, name: 'Cash', description: 'Cash payment' }
     ]
+    paymentForm.value.paymentMethod = 'Cash'
   }
 }
 
@@ -793,21 +1166,66 @@ function getAlertIcon() {
 
 // Cart functions with await
 async function addToCart(product) {
-  if (product.stock_quantity === 0) {
+  // Determine which UoM to use - prioritize saleUoms relationship
+  const saleUoms = getProductSaleUoms(product)
+  const saleUom = getProductSaleUom(product)
+  const purchaseUom = getProductPurchaseUom(product)
+  const baseUom = getProductBaseUom(product)
+  const hasSaleUoms = saleUoms.length > 0
+  const hasSaleUom = saleUom && saleUom.id
+  const hasPurchaseUom = purchaseUom && purchaseUom.id
+  const hasDefaultUom = baseUom && baseUom.id
+  const defaultUomId = hasSaleUoms 
+    ? getDefaultProductUomId(product)
+    : (hasSaleUom 
+        ? saleUom.id 
+        : (hasPurchaseUom ? purchaseUom.id : (hasDefaultUom ? baseUom.id : null)))
+  const availableQty = getRemainingAvailableQuantity(product, defaultUomId)
+
+  if (!canSellProductToSelectedCustomer(product)) {
+    return
+  }
+
+  if (availableQty === 0) {
     showAlert('This product is out of stock!', 'warning')
     return
   }
 
-  const existing = cart.value.find(item => item.id === product.id)
+  if (hasSaleUoms && saleUoms.length > 1) {
+    uoMSelectorProduct.value = product
+    pendingCartItem.value = {
+      ...product,
+      quantity: 1,
+      price: getUomSpecificPrice(product, saleUoms[0].id, product.price),
+      uom_id: saleUoms[0].id,
+      cart_uid: generateCartItemUid(product.id, saleUoms[0].id)
+    }
+    showUoMSelector.value = true
+    return
+  }
+
+  const selectedUnitPrice = getEffectiveCartItemPrice(product, defaultUomId)
+
+  // Check if product already in cart with same UoM
+  const existing = cart.value.find(item => item.id === product.id && item.uom_id === defaultUomId)
+  
   if (existing) {
-    if (existing.quantity >= product.stock_quantity) {
+    existing.price = selectedUnitPrice
+    if (getRemainingAvailableQuantity(product, defaultUomId, existing.cart_uid) < 1) {
       showAlert('Cannot add more items. Stock limit reached!', 'warning')
       return
     }
     existing.quantity++
     showAlert(`Added another ${product.name} to cart`, 'success')
   } else {
-    cart.value.push({ ...product, quantity: 1 })
+    const cartItem = { 
+      ...product, 
+      quantity: 1,
+      price: selectedUnitPrice,
+      uom_id: defaultUomId,
+      cart_uid: generateCartItemUid(product.id, defaultUomId)
+    }
+    cart.value.push(cartItem)
     showAlert(`${product.name} added to cart`, 'success')
   }
   
@@ -817,6 +1235,342 @@ async function addToCart(product) {
   if (cart.value.length === 1) {
     cartOpen.value = true
   }
+}
+
+function selectUoM(uom) {
+  if (pendingCartItem.value) {
+    const product = uoMSelectorProduct.value || getProduct(pendingCartItem.value.id)
+    if (!canSellProductToSelectedCustomer(product)) {
+      pendingCartItem.value = null
+      showUoMSelector.value = false
+      return
+    }
+    const existing = cart.value.find(item => Number(item.id) === Number(pendingCartItem.value.id) && Number(item.uom_id) === Number(uom.id))
+    const remainingQty = getRemainingAvailableQuantity(product, uom.id, existing?.cart_uid || null)
+
+    if (remainingQty < 1) {
+      showAlert('Cannot add more items. Stock limit reached!', 'warning')
+      pendingCartItem.value = null
+      showUoMSelector.value = false
+      return
+    }
+
+    const selectedPrice = getEffectiveCartItemPrice(uoMSelectorProduct.value, uom.id, pendingCartItem.value.price)
+    if (existing) {
+      existing.uom_abbr = uom.abbreviation
+      existing.price = selectedPrice
+      existing.quantity += 1
+    } else {
+      pendingCartItem.value.uom_id = uom.id
+      pendingCartItem.value.uom_abbr = uom.abbreviation
+      pendingCartItem.value.price = selectedPrice
+      pendingCartItem.value.cart_uid = generateCartItemUid(pendingCartItem.value.id, uom.id)
+      cart.value.push(pendingCartItem.value)
+    }
+    pendingCartItem.value = null
+  }
+  showUoMSelector.value = false
+}
+
+function getProduct(productId) {
+  const targetId = Number(productId)
+  return products.value.find(p => Number(p.id) === targetId)
+}
+
+function getProductSaleUoms(product) {
+  if (!product) return []
+  if (Array.isArray(product.saleUoms)) return product.saleUoms
+  if (Array.isArray(product.sale_uoms)) return product.sale_uoms
+  return []
+}
+
+function getProductSaleUom(product) {
+  if (!product) return null
+  return product.saleUom || product.sale_uom || null
+}
+
+function getProductPurchaseUom(product) {
+  if (!product) return null
+  return product.purchaseUom || product.purchase_uom || null
+}
+
+function getProductBaseUom(product) {
+  if (!product) return null
+  return product.uom || product.base_uom || null
+}
+
+function getCartItemUomOptions(item) {
+  const product = getProduct(item.id)
+  if (!product) return []
+
+  const options = []
+  const saleUoms = getProductSaleUoms(product)
+
+  if (saleUoms.length > 0) {
+    options.push(...saleUoms)
+  } else if (getProductSaleUom(product)?.id) {
+    options.push(getProductSaleUom(product))
+  }
+
+  if (options.length === 0 && getProductPurchaseUom(product)?.id) {
+    options.push(getProductPurchaseUom(product))
+  }
+
+  if (options.length === 0 && getProductBaseUom(product)?.id) {
+    options.push(getProductBaseUom(product))
+  }
+
+  const seen = new Set()
+  return options.filter((uom) => {
+    const id = Number(uom?.id)
+    if (!id || seen.has(id)) {
+      return false
+    }
+    seen.add(id)
+    return true
+  })
+}
+
+function hasMultipleCartItemUoms(item) {
+  const product = getProduct(item.id)
+  return getProductSaleUoms(product).length > 1
+}
+
+function updateItemUoM(item) {
+  const product = getProduct(item.id)
+  item.price = getEffectiveCartItemPrice(product, item.uom_id, item.price)
+  const availableQty = getRemainingAvailableQuantity(product, item.uom_id, item.cart_uid)
+  if (item.quantity > availableQty) {
+    item.quantity = Math.max(1, Math.floor(availableQty))
+    showAlert(`Available stock in selected unit is ${formatPrice(availableQty)}. Quantity adjusted.`, 'warning')
+  }
+
+  // UoM has been changed, refresh promotions to recalculate
+  refreshPromotions()
+}
+
+function getUomSpecificPrice(product, uomId, fallbackPrice = null) {
+  if (!product) return Number(fallbackPrice || 0)
+
+  const fallback = Number(fallbackPrice ?? product.price ?? 0)
+  const targetUomId = Number(uomId || 0)
+  if (!targetUomId) return fallback
+
+  const fromObjectMap = product.uom_prices
+  if (fromObjectMap && typeof fromObjectMap === 'object' && !Array.isArray(fromObjectMap)) {
+    const direct = fromObjectMap[targetUomId]
+    const stringKey = fromObjectMap[String(targetUomId)]
+    const resolved = direct ?? stringKey
+    if (resolved !== undefined && resolved !== null && !Number.isNaN(Number(resolved))) {
+      return Number(resolved)
+    }
+  }
+
+  const fromArrayMap = Array.isArray(product.uom_prices) ? product.uom_prices : []
+  const foundInUomPrices = fromArrayMap.find((entry) => Number(entry?.uom_id) === targetUomId)
+  if (foundInUomPrices && foundInUomPrices.price !== undefined && foundInUomPrices.price !== null) {
+    return Number(foundInUomPrices.price)
+  }
+
+  const prices = Array.isArray(product.prices) ? product.prices : []
+  const foundInPricesRelation = prices.find((entry) => Number(entry?.uom_id) === targetUomId)
+  if (foundInPricesRelation && foundInPricesRelation.price !== undefined && foundInPricesRelation.price !== null) {
+    return Number(foundInPricesRelation.price)
+  }
+
+  return fallback
+}
+
+function getSelectedCustomerPriceGroup(customer = selectedCustomerData.value) {
+  if (!customer) return null
+  return customer.priceGroup || customer.price_group || null
+}
+
+function getSelectedCustomerPriceGroupId(customer = selectedCustomerData.value) {
+  const priceGroup = getSelectedCustomerPriceGroup(customer)
+  return Number(customer?.price_group_id || priceGroup?.id || 0)
+}
+
+function normalizePricingGroupIdentifier(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function isRetailPricingCustomer(customer) {
+  if (!customer) return true
+
+  const priceGroup = getSelectedCustomerPriceGroup(customer)
+  const priceGroupId = getSelectedCustomerPriceGroupId(customer)
+
+  if (!priceGroupId) {
+    return true
+  }
+
+  const normalizedCode = normalizePricingGroupIdentifier(priceGroup?.code)
+  const normalizedName = normalizePricingGroupIdentifier(priceGroup?.name)
+
+  return normalizedCode === 'retail_default'
+    || normalizedName === 'retail_default'
+    || normalizedName === 'retail'
+}
+
+function isCustomerPriceGroupEnabled(customer = selectedCustomerData.value) {
+  const priceGroup = getSelectedCustomerPriceGroup(customer)
+  if (!priceGroup) return true
+  if (isRetailPricingCustomer(customer)) return true
+  return Boolean(priceGroup.is_enabled)
+}
+
+function getProductGroupBasePrice(product, customer) {
+  if (!product || !customer || isRetailPricingCustomer(customer)) {
+    return Number(product?.price || 0)
+  }
+
+  const priceGroup = getSelectedCustomerPriceGroup(customer)
+  const priceGroupId = getSelectedCustomerPriceGroupId(customer)
+  const retailBasePrice = Number(product.price || 0)
+
+  if (!priceGroupId) {
+    return retailBasePrice
+  }
+
+  const prices = Array.isArray(product.prices) ? product.prices : []
+  const matchedGroupPrice = prices.find((entry) => Number(entry?.price_group_id) === priceGroupId && (entry?.uom_id === null || entry?.uom_id === undefined))
+  if (matchedGroupPrice && matchedGroupPrice.price !== undefined && matchedGroupPrice.price !== null) {
+    return Number(matchedGroupPrice.price)
+  }
+
+  const discountPercentage = Number(priceGroup?.discount_percentage || 0)
+  if (discountPercentage > 0) {
+    return retailBasePrice * (1 - discountPercentage / 100)
+  }
+
+  return retailBasePrice
+}
+
+function hasExplicitPriceForCustomerGroup(product, customer = selectedCustomerData.value) {
+  if (!product || !customer || isRetailPricingCustomer(customer)) {
+    return true
+  }
+
+  if (!isCustomerPriceGroupEnabled(customer)) {
+    return false
+  }
+
+  const priceGroupId = getSelectedCustomerPriceGroupId(customer)
+  if (!priceGroupId) {
+    return true
+  }
+
+  const prices = Array.isArray(product.prices) ? product.prices : []
+  return prices.some((entry) => Number(entry?.price_group_id) === priceGroupId && (entry?.uom_id === null || entry?.uom_id === undefined))
+}
+
+function getCustomerPricingBlockMessage(product, customer = selectedCustomerData.value) {
+  const priceGroup = getSelectedCustomerPriceGroup(customer)
+  const groupName = priceGroup?.name || 'selected pricing group'
+  const productName = product?.name || 'This product'
+
+  if (priceGroup && !isCustomerPriceGroupEnabled(customer)) {
+    return `${groupName} pricing is turned off. Enable ${groupName} or reassign the customer before selling ${productName}.`
+  }
+
+  return `${productName} has no price set for ${groupName}. Set a ${groupName} price before selling to this customer.`
+}
+
+function getProductPricingWarning(product, customer = selectedCustomerData.value) {
+  const priceGroup = getSelectedCustomerPriceGroup(customer)
+  if (!product || !customer || !priceGroup || isRetailPricingCustomer(customer)) {
+    return ''
+  }
+
+  if (!isCustomerPriceGroupEnabled(customer)) {
+    return `${priceGroup.name} disabled`
+  }
+
+  if (!hasExplicitPriceForCustomerGroup(product, customer)) {
+    return `${priceGroup.name} price missing`
+  }
+
+  return ''
+}
+
+function canSellProductToSelectedCustomer(product, customer = selectedCustomerData.value, { showError = true } = {}) {
+  const allowed = hasExplicitPriceForCustomerGroup(product, customer)
+  if (!allowed && showError) {
+    showAlert(getCustomerPricingBlockMessage(product, customer), 'error')
+  }
+  return allowed
+}
+
+function getEffectiveCartItemPrice(product, uomId, fallbackPrice = null) {
+  const retailUomPrice = getUomSpecificPrice(product, uomId, fallbackPrice)
+  const customer = selectedCustomerData.value
+
+  if (!product || !customer || isRetailPricingCustomer(customer)) {
+    return retailUomPrice
+  }
+
+  const retailBasePrice = Number(product.price || 0)
+  const groupedBasePrice = getProductGroupBasePrice(product, customer)
+
+  if (!retailBasePrice || retailBasePrice <= 0) {
+    return groupedBasePrice || retailUomPrice
+  }
+
+  const ratio = groupedBasePrice / retailBasePrice
+  return Number((retailUomPrice * ratio).toFixed(2))
+}
+
+function applyCustomerPricingToCart() {
+  const invalidItem = cart.value.find((item) => {
+    const product = getProduct(item.id)
+    return !canSellProductToSelectedCustomer(product, selectedCustomerData.value, { showError: false })
+  })
+
+  if (invalidItem) {
+    const invalidProduct = getProduct(invalidItem.id)
+    showAlert(getCustomerPricingBlockMessage(invalidProduct, selectedCustomerData.value), 'error')
+    return false
+  }
+
+  cart.value.forEach((item) => {
+    const product = getProduct(item.id)
+    item.price = getEffectiveCartItemPrice(product, item.uom_id, item.price)
+  })
+
+  return true
+}
+
+function validateCustomerPricingForCart() {
+  const invalidItem = cart.value.find((item) => {
+    const product = getProduct(item.id)
+    return !canSellProductToSelectedCustomer(product, selectedCustomerData.value, { showError: false })
+  })
+
+  if (!invalidItem) {
+    return true
+  }
+
+  const invalidProduct = getProduct(invalidItem.id)
+  showAlert(getCustomerPricingBlockMessage(invalidProduct, selectedCustomerData.value), 'error')
+  return false
+}
+
+function getUomOptionLabel(product, uom) {
+  if (!uom) return 'UOM'
+  const price = getEffectiveCartItemPrice(product, uom.id, getUomSpecificPrice(product, uom.id, product?.price))
+  const name = uom.name || 'UOM'
+  const abbr = uom.abbreviation || name
+  return `${name} (${abbr}) - Ksh ${formatPrice(price)}`
+}
+
+function getProductDefaultDisplayPrice(product) {
+  const defaultUomId = getDefaultProductUomId(product)
+  return getEffectiveCartItemPrice(product, defaultUomId, getUomSpecificPrice(product, defaultUomId, product?.price))
 }
 
 function handleBarcodeEnter() {
@@ -840,18 +1594,90 @@ function clearFilters() {
   stockFilter.value = 'all'
 }
 
-async function removeFromCart(id) {
-  const item = cart.value.find(item => item.id === id)
+async function removeFromCart(cartUid) {
+  const item = cart.value.find(entry => entry.cart_uid === cartUid)
   if (item) {
-    cart.value = cart.value.filter(item => item.id !== id)
+    cart.value = cart.value.filter(entry => entry.cart_uid !== cartUid)
+    selectedCartItemIds.value = selectedCartItemIds.value.filter(id => id !== cartUid)
+    if (editingCartItemId.value === cartUid) {
+      editingCartItemId.value = null
+    }
     showAlert(`${item.name} removed from cart`, 'info')
     await refreshPromotions()
   }
 }
 
+function toggleCartItemSelection(cartUid) {
+  if (selectedCartItemIds.value.includes(cartUid)) {
+    selectedCartItemIds.value = selectedCartItemIds.value.filter(id => id !== cartUid)
+    if (editingCartItemId.value === cartUid) {
+      editingCartItemId.value = null
+    }
+    return
+  }
+  selectedCartItemIds.value.push(cartUid)
+}
+
+async function deleteSelectedCartItems() {
+  if (selectedCartItemIds.value.length === 0) {
+    showAlert('Select cart items first.', 'warning')
+    return
+  }
+
+  const selectedSet = new Set(selectedCartItemIds.value)
+  const removedCount = cart.value.filter(item => selectedSet.has(item.cart_uid)).length
+  cart.value = cart.value.filter(item => !selectedSet.has(item.cart_uid))
+  selectedCartItemIds.value = []
+  editingCartItemId.value = null
+  showAlert(`${removedCount} item(s) removed from cart`, 'info')
+  await refreshPromotions()
+}
+
+async function clearCart() {
+  if (cart.value.length === 0) return
+  const clearedCount = cart.value.length
+  cart.value = []
+  selectedCartItemIds.value = []
+  editingCartItemId.value = null
+  showAlert(`Cleared ${clearedCount} item(s) from cart`, 'info')
+  await refreshPromotions()
+}
+
+function startEditCartItem(item) {
+  if (!selectedCartItemIds.value.includes(item.cart_uid)) {
+    selectedCartItemIds.value.push(item.cart_uid)
+  }
+
+  editingCartItemId.value = item.cart_uid
+  editCartForm.value = {
+    quantity: Number(item.quantity) || 1
+  }
+}
+
+function cancelCartItemEdit() {
+  editingCartItemId.value = null
+}
+
+async function applyCartItemEdit(item) {
+  const nextQty = Math.max(1, parseInt(editCartForm.value.quantity, 10) || 1)
+
+  const product = products.value.find(p => p.id === item.id)
+  const availableQty = getRemainingAvailableQuantity(product, item.uom_id, item.cart_uid)
+  if (nextQty > availableQty) {
+    showAlert(`Only ${availableQty} item(s) available in stock.`, 'warning')
+    return
+  }
+
+  item.quantity = nextQty
+  editingCartItemId.value = null
+  showAlert(`${item.name} updated`, 'success')
+  await refreshPromotions()
+}
+
 async function increaseQuantity(item) {
   const product = products.value.find(p => p.id === item.id)
-  if (item.quantity >= product.stock_quantity) {
+  const availableQty = getRemainingAvailableQuantity(product, item.uom_id, item.cart_uid)
+  if (item.quantity >= availableQty) {
     showAlert('Stock limit reached!', 'warning')
     return
   }
@@ -864,7 +1690,7 @@ async function decreaseQuantity(item) {
     item.quantity--
     await refreshPromotions()
   } else {
-    await removeFromCart(item.id)
+    await removeFromCart(item.cart_uid)
   }
 }
 
@@ -885,12 +1711,246 @@ function getStockClass(quantity) {
   return 'in-stock'
 }
 
+// UoM Helper Functions
+function getDefaultProductUomId(product) {
+  if (!product) return null
+
+  const saleUoms = getProductSaleUoms(product)
+  const defaultSaleUom = saleUoms.find(uom => Boolean(uom.pivot?.is_default))
+  return Number(
+    defaultSaleUom?.id ||
+    product.sale_uom_id ||
+    saleUoms?.[0]?.id ||
+    product.uom_id ||
+    product.purchase_uom_id ||
+    getProductBaseUom(product)?.id ||
+    getProductPurchaseUom(product)?.id ||
+    getProductSaleUom(product)?.id ||
+    0
+  ) || null
+}
+
+function getAvailableQuantity(product, uomId = null) {
+  if (!product) return 0
+
+  const targetUomId = Number(uomId || getDefaultProductUomId(product) || product.uom_id || 0)
+  const stockByUom = product.available_stock_by_uom || {}
+  const available = targetUomId ? stockByUom[targetUomId] ?? stockByUom[String(targetUomId)] : null
+
+  if (available !== null && available !== undefined) {
+    return Number(available)
+  }
+
+  return Number(product.base_stock_quantity ?? product.stock_quantity ?? 0)
+}
+
+function getBaseStockQuantity(product) {
+  if (!product) return 0
+  return Number(product.base_stock_quantity ?? product.stock_quantity ?? 0)
+}
+
+function getBaseUnitsPerUom(product, uomId = null) {
+  if (!product) return 0
+
+  const baseStockQuantity = getBaseStockQuantity(product)
+  const targetUomId = Number(uomId || getDefaultProductUomId(product) || 0)
+  const baseUomId = Number(product.base_uom_id || product.uom_id || getProductBaseUom(product)?.id || 0)
+
+  if (!targetUomId || targetUomId === baseUomId) {
+    return 1
+  }
+
+  const availableQty = getAvailableQuantity(product, targetUomId)
+  if (!availableQty || !baseStockQuantity) {
+    return 0
+  }
+
+  return baseStockQuantity / availableQty
+}
+
+function getCartReservedBaseQuantity(product, excludeCartUid = null) {
+  const productId = Number(product?.id)
+  if (!productId) return 0
+
+  return cart.value.reduce((sum, entry) => {
+    if (Number(entry.id) !== productId) {
+      return sum
+    }
+
+    if (excludeCartUid && entry.cart_uid === excludeCartUid) {
+      return sum
+    }
+
+    const multiplier = getBaseUnitsPerUom(product, entry.uom_id)
+    return sum + ((Number(entry.quantity) || 0) * multiplier)
+  }, 0)
+}
+
+function getRemainingAvailableQuantity(product, uomId = null, excludeCartUid = null) {
+  if (!product) return 0
+
+  const baseStockQuantity = getBaseStockQuantity(product)
+  const reservedBaseQuantity = getCartReservedBaseQuantity(product, excludeCartUid)
+  const remainingBaseQuantity = Math.max(0, baseStockQuantity - reservedBaseQuantity)
+  const multiplier = getBaseUnitsPerUom(product, uomId)
+
+  if (!multiplier) {
+    return 0
+  }
+
+  return Number((remainingBaseQuantity / multiplier).toFixed(4))
+}
+
+function getProductDisplayUom(product) {
+  const targetUomId = getDefaultProductUomId(product)
+  const saleUoms = getProductSaleUoms(product)
+
+  if (saleUoms.length) {
+    const saleUom = saleUoms.find(uom => Number(uom.id) === Number(targetUomId)) || saleUoms[0]
+    if (saleUom) return saleUom.abbreviation || saleUom.name || ''
+  }
+
+  if (getProductSaleUom(product) && Number(getProductSaleUom(product).id) === Number(targetUomId)) {
+    return getProductSaleUom(product).abbreviation || getProductSaleUom(product).name || ''
+  }
+  if (getProductBaseUom(product) && Number(getProductBaseUom(product).id) === Number(targetUomId)) {
+    return getProductBaseUom(product).abbreviation || getProductBaseUom(product).name || ''
+  }
+  if (getProductPurchaseUom(product) && Number(getProductPurchaseUom(product).id) === Number(targetUomId)) {
+    return getProductPurchaseUom(product).abbreviation || getProductPurchaseUom(product).name || ''
+  }
+
+  return ''
+}
+
+function getCartItemUomLabel(item) {
+  const product = getProduct(item.id)
+  if (!product) return item.uom_abbr || 'Base'
+
+  const allUoms = [
+    ...getProductSaleUoms(product),
+    ...(getProductSaleUom(product) ? [getProductSaleUom(product)] : []),
+    ...(getProductPurchaseUom(product) ? [getProductPurchaseUom(product)] : []),
+    ...(getProductBaseUom(product) ? [getProductBaseUom(product)] : [])
+  ]
+
+  const matched = allUoms.find(uom => Number(uom.id) === Number(item.uom_id))
+  return matched?.abbreviation || matched?.name || item.uom_abbr || 'Base'
+}
+
+function getUomLabel(product, type = 'sale') {
+  if (type === 'sale' && getProductSaleUom(product)) {
+    return getProductSaleUom(product).abbreviation
+  }
+  if (type === 'purchase' && getProductPurchaseUom(product)) {
+    return getProductPurchaseUom(product).abbreviation
+  }
+  if (getProductBaseUom(product)) {
+    return getProductBaseUom(product).abbreviation
+  }
+  return 'unit'
+}
+
 function getSubmitButtonText() {
   if (cart.value.length === 0) return 'Add items to cart'
   if (paymentForm.value.amountPaid === 0) return 'Enter payment amount'
+  if (isMpesaPayment.value && !paymentForm.value.mpesaPhoneNumber) return 'Enter M-Pesa phone number'
+  if (isMpesaPayment.value && paymentForm.value.mpesaStatus !== 'success') return 'Complete M-Pesa payment first'
   if (paymentForm.value.amountPaid < netTotal.value && !selectedCustomerId.value) return 'Select customer or pay full'
   if (paymentForm.value.amountPaid < netTotal.value) return 'Process with credit'
   return 'Process Sale'
+}
+
+function resetMpesaState(options = {}) {
+  const keepPhone = Boolean(options.keepPhone)
+  const currentPhone = paymentForm.value.mpesaPhoneNumber
+  paymentForm.value.mpesaCheckoutRequestId = ''
+  paymentForm.value.mpesaMerchantRequestId = ''
+  paymentForm.value.mpesaReceiptNumber = ''
+  paymentForm.value.mpesaCustomerMessage = ''
+  paymentForm.value.mpesaStatus = 'idle'
+  paymentForm.value.mpesaStatusLabel = 'Not Started'
+  paymentForm.value.mpesaPhoneNumber = keepPhone ? currentPhone : ''
+}
+
+function syncMpesaTransactionState(transaction, fallbackMessage = '') {
+  paymentForm.value.mpesaCheckoutRequestId = transaction?.checkout_request_id || paymentForm.value.mpesaCheckoutRequestId
+  paymentForm.value.mpesaMerchantRequestId = transaction?.merchant_request_id || paymentForm.value.mpesaMerchantRequestId
+  paymentForm.value.mpesaReceiptNumber = transaction?.mpesa_receipt_number || ''
+  paymentForm.value.mpesaCustomerMessage = transaction?.result_desc || fallbackMessage || paymentForm.value.mpesaCustomerMessage
+
+  if (transaction?.status === 'success') {
+    paymentForm.value.mpesaStatus = 'success'
+    paymentForm.value.mpesaStatusLabel = 'Paid'
+  } else if (transaction?.status === 'failed') {
+    paymentForm.value.mpesaStatus = 'failed'
+    paymentForm.value.mpesaStatusLabel = 'Failed'
+  } else if (transaction?.status === 'pending') {
+    paymentForm.value.mpesaStatus = 'pending'
+    paymentForm.value.mpesaStatusLabel = 'Awaiting Approval'
+  }
+}
+
+async function initiateMpesaPayment() {
+  if (!paymentForm.value.mpesaPhoneNumber) {
+    showAlert('Enter the M-Pesa phone number first.', 'warning')
+    return
+  }
+
+  if (Number(paymentForm.value.amountPaid) <= 0) {
+    showAlert('Enter the amount to charge via M-Pesa.', 'warning')
+    return
+  }
+
+  try {
+    paymentForm.value.mpesaStatus = 'initiating'
+    paymentForm.value.mpesaStatusLabel = 'Initiating...'
+
+    const res = await axios.post('/api/mpesa/stk-push', {
+      phone_number: paymentForm.value.mpesaPhoneNumber,
+      amount: Number(paymentForm.value.amountPaid),
+      account_reference: `SALE-${Date.now()}`,
+      transaction_desc: 'POS Payment'
+    })
+
+    syncMpesaTransactionState(res.data?.transaction, res.data?.message)
+    paymentForm.value.mpesaStatus = 'pending'
+    paymentForm.value.mpesaStatusLabel = 'Awaiting Approval'
+    showAlert(res.data?.message || 'STK Push sent. Ask the customer to approve the prompt.', 'info')
+  } catch (err) {
+    resetMpesaState({ keepPhone: true })
+    showAlert(err.response?.data?.error || err.response?.data?.message || 'Failed to initiate M-Pesa payment.', 'error')
+  }
+}
+
+async function checkMpesaPaymentStatus() {
+  if (!paymentForm.value.mpesaCheckoutRequestId) {
+    showAlert('Initiate the M-Pesa payment first.', 'warning')
+    return
+  }
+
+  try {
+    paymentForm.value.mpesaStatus = 'checking'
+    paymentForm.value.mpesaStatusLabel = 'Checking...'
+
+    const res = await axios.post('/api/mpesa/stk-query', {
+      checkout_request_id: paymentForm.value.mpesaCheckoutRequestId,
+    })
+
+    syncMpesaTransactionState(res.data?.transaction, res.data?.provider_response?.ResultDesc)
+
+    if (res.data?.transaction?.status === 'success') {
+      showAlert('M-Pesa payment confirmed successfully.', 'success')
+    } else if (res.data?.transaction?.status === 'failed') {
+      showAlert(res.data?.transaction?.result_desc || 'M-Pesa payment failed.', 'error')
+    } else {
+      showAlert('Payment is still pending. Ask the customer to complete the prompt, then check again.', 'info')
+    }
+  } catch (err) {
+    paymentForm.value.mpesaStatus = 'pending'
+    paymentForm.value.mpesaStatusLabel = 'Awaiting Approval'
+    showAlert(err.response?.data?.error || err.response?.data?.message || 'Failed to check M-Pesa status.', 'error')
+  }
 }
 
 async function refreshPromotions() {
@@ -918,8 +1978,6 @@ async function refreshPromotions() {
           })),
           customer_id: selectedCustomerId.value || null
         }
-        
-        console.log('🛒 Requesting promo calculation for cart:', payload)
         
         const res = await axios.post('/promotions/calculate-discount', payload)
         
@@ -971,17 +2029,6 @@ async function refreshPromotions() {
           promoDiscount.value = newDiscount
           appliedPromos.value = newPromos
           
-          console.log('📊 Cart Promo Updated:', {
-            count: appliedPromos.value.length,
-            promos: appliedPromos.value.map(p => ({
-              name: p.name,
-              type: p.type,
-              discount: p.discount,
-              buy_qty: p.buy_quantity,
-              get_qty: p.get_quantity
-            })),
-            totalDiscount: promoDiscount.value
-          })
         }
         
         resolve()
@@ -1015,8 +2062,12 @@ function generateReceipt(saleResponse) {
   const showTaxes = printerSettings.value.show_taxes !== false
   const taxLabel = taxConfig.name ? `${taxConfig.name} (${taxConfig.rate ?? 0}%${taxInclusive ? ' incl.' : ''})` : 'Tax'
   
+  // Get invoice data if available
+  const invoice = saleResponse.invoice
+  
   receiptData.value = {
     receiptNumber,
+    invoiceNumber: invoice?.invoice_number || 'N/A',
     date: now.toLocaleDateString('en-GB'),
     time: now.toLocaleTimeString('en-GB'),
     customer: saleForm.value.customer_name || 'Walk-in Customer',
@@ -1026,6 +2077,7 @@ function generateReceipt(saleResponse) {
       return {
         id: item.id,
         name: item.name,
+        uom: getCartItemUomLabel(item),
         quantity: quantity,
         price: price.toFixed(2),
         total: (price * quantity).toFixed(2)
@@ -1041,6 +2093,10 @@ function generateReceipt(saleResponse) {
     notes: saleForm.value.notes,
     saleId: saleResponse.id || 'N/A',
     promotions: saleResponse.applied_promotions || [],
+    paymentMethod: sale.payment_method || paymentForm.value.paymentMethod || 'Cash',
+    mpesaPhoneNumber: sale.mpesa_phone_number || paymentForm.value.mpesaPhoneNumber || null,
+    mpesaReceiptNumber: sale.mpesa_receipt_number || paymentForm.value.mpesaReceiptNumber || null,
+    mpesaCheckoutRequestId: sale.mpesa_checkout_request_id || paymentForm.value.mpesaCheckoutRequestId || null,
     taxLabel,
     showTaxes
   }
@@ -1162,6 +2218,8 @@ async function submitSale() {
   if (!canProcessSale.value) {
     if (cart.value.length === 0) {
       showAlert('Add products to the cart before submitting a sale.', 'warning')
+    } else if (isMpesaPayment.value && paymentForm.value.mpesaStatus !== 'success') {
+      showAlert('Complete the M-Pesa payment and confirm its status before processing the sale.', 'warning')
     } else if (paymentForm.value.amountPaid < netTotal.value && !selectedCustomerId.value) {
       showAlert('Payment is below total. Select a customer to record the balance as credit or pay full amount.', 'warning')
     } else if (creditBlockReason.value) {
@@ -1170,8 +2228,26 @@ async function submitSale() {
     return
   }
 
+  if (!validateCustomerPricingForCart()) {
+    return
+  }
+
   submitting.value = true
   try {
+    if (isMpesaPayment.value) {
+      if (!paymentForm.value.mpesaPhoneNumber) {
+        showAlert('Enter the M-Pesa phone number first.', 'warning')
+        submitting.value = false
+        return
+      }
+
+      if (paymentForm.value.mpesaStatus !== 'success') {
+        showAlert('Complete the M-Pesa payment and confirm its status before processing the sale.', 'warning')
+        submitting.value = false
+        return
+      }
+    }
+
     await refreshPromotions()
 
     // Credit handling prompt when payment is less than total
@@ -1212,23 +2288,25 @@ async function submitSale() {
     }
 
     const payload = {
-      customer_id: selectedCustomerId.value || null,
+      customer_id: selectedCustomerId.value ? parseInt(selectedCustomerId.value) : null,
       payment_method: paymentForm.value.paymentMethod,
-      tax_configuration_id: defaultTaxConfig.value?.id || null,
-      discount: promoDiscount.value,
-      tax: defaultTaxConfig.value?.rate || 0,
-      amount_paid: paymentForm.value.amountPaid,
-      apply_credit: applyCredit,
+      tax_configuration_id: defaultTaxConfig.value?.id ? parseInt(defaultTaxConfig.value.id) : null,
+      discount: parseFloat(promoDiscount.value) || 0,
+      tax: parseFloat(defaultTaxConfig.value?.rate) || 0,
+      amount_paid: parseFloat(paymentForm.value.amountPaid) || 0,
+      apply_credit: Boolean(applyCredit),
+      mpesa_phone_number: isMpesaPayment.value ? paymentForm.value.mpesaPhoneNumber : null,
+      mpesa_checkout_request_id: isMpesaPayment.value ? paymentForm.value.mpesaCheckoutRequestId : null,
+      mpesa_receipt_number: isMpesaPayment.value ? paymentForm.value.mpesaReceiptNumber : null,
       items: cart.value.map(item => ({
         product_id: item.id,
-        quantity: item.quantity,
-        price: item.price
+        quantity: parseInt(item.quantity) || 1,
+        price: parseFloat(item.price) || 0,
+        uom_id: item.uom_id ? parseInt(item.uom_id) : null
       }))
     }
 
-    console.log('📤 Submitting sale with tax config:', payload)
-
-  const res = await axios.post('/api/sales', payload)
+    const res = await axios.post('/sales', payload)
     // Sync cart-side promo view with server-calculated promos/discounts (so cart matches receipt)
     if (res.data) {
       const serverDiscount = Number(res.data.discount ?? res.data.sale?.discount ?? promoDiscount.value ?? 0)
@@ -1236,8 +2314,6 @@ async function submitSale() {
       promoDiscount.value = serverDiscount
       appliedPromos.value = Array.isArray(serverPromos) ? serverPromos : appliedPromos.value
     }
-    console.log('✅ Sale recorded:', res.data)
-
     // Show success message with credit info if applicable
     if (applyCredit && balance > 0) {
       showAlert(`Sale processed! Ksh ${balance.toFixed(2)} added to customer credit balance.`, 'success')
@@ -1251,20 +2327,38 @@ async function submitSale() {
     // Reset cart and forms
     cart.value = []
     cartOpen.value = false
+    selectedCartItemIds.value = []
+    editingCartItemId.value = null
     selectedCustomerId.value = ''
     saleForm.value.customer_name = ''
     saleForm.value.notes = ''
     paymentForm.value.amountPaid = 0
     paymentForm.value.paymentMethod = 'Cash'
+    resetMpesaState()
+    clearCartCache()
     await fetchProducts()
   } catch (err) {
     const apiMsg = err.response?.data?.message || err.response?.data?.error
-    const friendly = apiMsg && typeof apiMsg === 'string'
+    const validationErrors = err.response?.data?.details || err.response?.data?.errors
+    
+    let friendly = apiMsg && typeof apiMsg === 'string'
       ? apiMsg
       : 'Sale could not be processed right now. Please try again.'
+    
+    // Add validation details if available
+    if (validationErrors && typeof validationErrors === 'object') {
+      const errorList = Object.entries(validationErrors)
+        .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+        .join('\n')
+      if (errorList) {
+        friendly += `\n\nValidation errors:\n${errorList}`
+      }
+    }
 
-    // Log full error for debugging while keeping the user alert friendly
+    // Log full error for debugging
     console.error('❌ Sale submission failed:', err.response?.data || err.message)
+    console.error('📦 Payload sent:', payload)
+    console.error('🔍 Full error:', err)
 
     showAlert(friendly, 'error')
   } finally {
@@ -1706,6 +2800,19 @@ async function submitSale() {
   font-size: 0.9rem;
   font-weight: 500;
   padding: 0.5rem 1rem;
+
+.pricing-warning-badge {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.5rem 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(245, 101, 101, 0.14);
+  color: #c53030;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
   border-radius: 8px;
   width: fit-content;
 }
@@ -1870,15 +2977,72 @@ async function submitSale() {
   gap: 1rem;
 }
 
+.cart-actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.selection-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.cart-actions-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cart-action-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1e3a8a;
+  background: #dbeafe;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cart-action-btn.danger {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.cart-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .cart-item {
   background: #f8fafc;
   border-radius: 12px;
   padding: 1rem;
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   gap: 1rem;
   align-items: center;
   border: 1px solid #e2e8f0;
+}
+
+.cart-item.selected {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.item-select input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .item-info h4 {
@@ -1893,13 +3057,20 @@ async function submitSale() {
   color: #718096;
 }
 
+.item-uom-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: #475569;
+  font-weight: 600;
+}
+
 .item-controls {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
- qty-btn {
+.qty-btn {
   width: 28px;
   height: 28px;
   border: none;
@@ -1914,7 +3085,7 @@ async function submitSale() {
   font-size: 0.75rem;
 }
 
- qty-btn:hover {
+.qty-btn:hover {
   background: #cbd5e0;
 }
 
@@ -1930,12 +3101,16 @@ async function submitSale() {
   color: #2d3748;
 }
 
+.item-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.edit-btn,
 .remove-btn {
   width: 28px;
   height: 28px;
   border: none;
-  background: rgba(229, 62, 62, 0.1);
-  color: #e53e3e;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1945,9 +3120,78 @@ async function submitSale() {
   font-size: 0.75rem;
 }
 
+.edit-btn {
+  background: rgba(30, 64, 175, 0.12);
+  color: #1e40af;
+}
+
+.edit-btn:hover {
+  background: #1e40af;
+  color: white;
+}
+
+.remove-btn {
+  background: rgba(229, 62, 62, 0.1);
+  color: #e53e3e;
+}
+
 .remove-btn:hover {
   background: #e53e3e;
   color: white;
+}
+
+.item-edit-row {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  border-top: 1px dashed #bfdbfe;
+  padding-top: 0.75rem;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.edit-field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.edit-field input {
+  width: 96px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.85rem;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.save-edit-btn,
+.cancel-edit-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.save-edit-btn {
+  background: #16a34a;
+  color: white;
+}
+
+.cancel-edit-btn {
+  background: #e2e8f0;
+  color: #334155;
 }
 
 /* Cart Summary */
@@ -2038,6 +3282,89 @@ async function submitSale() {
   margin: 0 0 1rem 0;
   color: #2d3748;
   font-size: 1.1rem;
+}
+
+.mpesa-panel {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  background: #eef2ff;
+}
+
+.mpesa-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.mpesa-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: #059669;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mpesa-btn.secondary {
+  background: #475569;
+}
+
+.mpesa-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mpesa-status-card {
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background: white;
+  border: 1px solid #cbd5e1;
+}
+
+.mpesa-status-card.success {
+  border-color: #10b981;
+}
+
+.mpesa-status-card.pending {
+  border-color: #f59e0b;
+}
+
+.mpesa-status-card.failed {
+  border-color: #ef4444;
+}
+
+.mpesa-status-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mpesa-status-pill {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mpesa-status-text {
+  margin-top: 0.45rem;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.mpesa-status-text.subtle {
+  word-break: break-all;
+  color: #64748b;
 }
 
 .form-group {
@@ -2423,6 +3750,14 @@ async function submitSale() {
   margin-bottom: 1.5rem;
 }
 
+.receipt-company-logo {
+  max-width: 90px;
+  max-height: 70px;
+  object-fit: contain;
+  margin: 0 auto 0.5rem auto;
+  display: block;
+}
+
 .receipt-business-header h1 {
   margin: 0 0 0.5rem 0;
   font-size: 18px;
@@ -2576,6 +3911,137 @@ async function submitSale() {
 
 .secondary-btn:hover {
   background: #cbd5e0;
+}
+
+/* UoM Selection Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 90%;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-content h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.3rem;
+  color: #2d3748;
+}
+
+.modal-subtitle {
+  margin: 0 0 1.5rem 0;
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+.uom-options {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.uom-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 0.5rem;
+}
+
+.uom-option:hover {
+  border-color: #667eea;
+  background: #edf2f7;
+  transform: translateY(-2px);
+}
+
+.uom-option i {
+  font-size: 1.5rem;
+  color: #667eea;
+}
+
+.uom-option strong {
+  color: #2d3748;
+  font-size: 0.95rem;
+}
+
+.uom-option small {
+  color: #718096;
+  font-size: 0.8rem;
+}
+
+.modal-close-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: #e2e8f0;
+  color: #2d3748;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  background: #cbd5e0;
+}
+
+/* Item UoM Selector */
+.item-uom-selector {
+  margin-top: 0.5rem;
+}
+
+.uom-select {
+  width: 80px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  background: white;
+  color: #2d3748;
+  cursor: pointer;
+}
+
+.uom-select:hover {
+  border-color: #667eea;
+}
+
+.uom-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 /* Responsive Design */
@@ -2781,5 +4247,29 @@ async function submitSale() {
     padding: 5mm;
     font-size: 11px;
   }
+}
+
+/* UoM and Conversion Styles */
+.conversion-info {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #666;
+  background: rgba(102, 126, 234, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.item-uom {
+  display: block;
+  margin-top: 0.25rem;
+  color: #667eea;
+  font-weight: 500;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 0.25rem;
+  color: #666;
+  font-size: 0.85rem;
 }
 </style>

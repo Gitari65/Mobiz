@@ -14,27 +14,91 @@
       <div v-if="currentTab === 'Product Categories'">
         <h2>Product Categories <span class="count">({{ categories.length }})</span></h2>
         <form class="custom-form" @submit.prevent="addCategory">
-          <input v-model="newCategory" placeholder="New category name" required />
+          <div class="form-row">
+            <div class="form-group">
+              <label>Category Name *</label>
+              <input v-model="newCategory.name" placeholder="New category name" required />
+            </div>
+            <div class="form-group">
+              <label>Parent Category</label>
+              <select v-model="newCategory.parent_id">
+                <option :value="null">-- No Parent (Root Category) --</option>
+                <option v-for="cat in categories.filter(c => !c.parent_id)" :key="cat.id" :value="cat.id">
+                  {{ cat.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea v-model="newCategory.description" placeholder="Optional description" rows="2"></textarea>
+          </div>
           <button type="submit" class="primary-btn" :disabled="loading.categories">
             <span v-if="loading.categories" class="spinner"></span>
-            <span v-else>Add</span>
+            <span v-else>Add Category</span>
           </button>
         </form>
         <div class="csv-upload">
           <label>Bulk Upload (CSV):</label>
           <input class="file-input" type="file" @change="handleBulkUpload" accept=".csv" :disabled="loading.categories" />
           <a :href="sampleCsvUrl" download="sample_categories.csv" class="sample-link">Download Sample CSV</a>
+          <small>CSV Format: Category Name, Parent Category Name (optional)</small>
         </div>
         <div v-if="loading.categories" class="loading-container">
           <div class="spinner large"></div>
           <p>Loading categories...</p>
         </div>
-        <ul v-else class="item-list">
-          <li v-for="cat in categories" :key="cat.id">
-            <span>{{ cat.name }}</span>
-            <button class="delete-btn" @click="deleteCategory(cat.id)"><i class="fas fa-trash"></i></button>
-          </li>
-        </ul>
+        <div v-else-if="categories.length === 0" class="empty-state">
+          <i class="fas fa-folder"></i>
+          <p>No categories found</p>
+          <small>Add your first category above</small>
+        </div>
+        <div v-else class="category-tree">
+          <div v-for="cat in rootCategories" :key="cat.id" class="category-item">
+            <div class="category-row">
+              <div class="category-content">
+                <span v-if="cat.children && cat.children.length > 0" 
+                      class="expand-btn"
+                      @click="toggleCategoryExpand(cat.id)"
+                      :class="{ expanded: expandedCategories.includes(cat.id) }">
+                  <i class="fas fa-chevron-right"></i>
+                </span>
+                <span v-else class="expand-placeholder"></span>
+                <span class="category-name">{{ cat.name }}</span>
+                <span v-if="cat.description" class="category-desc">{{ cat.description }}</span>
+              </div>
+              <div class="category-actions">
+                <button class="edit-btn" @click="editCategory(cat)" title="Edit">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button class="delete-btn" @click="deleteCategory(cat.id)" title="Delete">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+            <!-- Subcategories -->
+            <div v-if="expandedCategories.includes(cat.id) && cat.children && cat.children.length > 0" 
+                 class="subcategories">
+              <div v-for="subcat in cat.children" :key="subcat.id" class="category-item sub-category">
+                <div class="category-row">
+                  <div class="category-content">
+                    <span class="subcategory-marker">├─</span>
+                    <span class="category-name">{{ subcat.name }}</span>
+                    <span v-if="subcat.description" class="category-desc">{{ subcat.description }}</span>
+                  </div>
+                  <div class="category-actions">
+                    <button class="edit-btn" @click="editCategory(subcat)" title="Edit">
+                      <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="delete-btn" @click="deleteCategory(subcat.id)" title="Delete">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div v-else-if="currentTab === 'Warehouses'">
         <h2>Warehouses <span class="count">({{ warehouses.length }})</span></h2>
@@ -112,7 +176,8 @@
             class="payment-card"
             :class="{ 
               enabled: pm.is_enabled,
-              changed: hasChanged(pm.id)
+              changed: hasChanged(pm.id),
+              locked: !pm.allowed_by_subscription
             }"
             @click="togglePaymentMethodLocal(pm.id)"
           >
@@ -123,11 +188,15 @@
               <i :class="getPaymentIcon(pm.name)"></i>
             </div>
             <div class="payment-info">
-              <h3 class="payment-name">{{ pm.name }}</h3>
+              <div class="payment-meta">
+                <h3 class="payment-name">{{ pm.name }}</h3>
+                <span v-if="!pm.allowed_by_subscription" class="locked-badge">Requires {{ formatRequiredFeature(pm.required_feature) }}</span>
+              </div>
               <p class="payment-desc">{{ pm.description }}</p>
+              <p v-if="!pm.allowed_by_subscription" class="payment-lock-reason">{{ pm.locked_reason }}</p>
             </div>
             <div class="payment-toggle">
-              <div class="toggle-switch" :class="{ active: pm.is_enabled }">
+              <div class="toggle-switch" :class="{ active: pm.is_enabled, disabled: !pm.allowed_by_subscription }">
                 <div class="toggle-slider"></div>
               </div>
             </div>
@@ -143,17 +212,51 @@
         </div>
 
         <form class="custom-form tax-form" @submit.prevent="editingTaxConfig ? updateTaxConfig() : addTaxConfig()">
-          <input v-model="newTaxConfig.name" placeholder="Tax name (e.g., VAT, Sales Tax)" required />
-          <input v-model.number="newTaxConfig.rate" type="number" step="0.01" min="0" max="100" placeholder="Rate %" required />
-          <select v-model="newTaxConfig.is_inclusive" required>
-            <option :value="true">Inclusive</option>
-            <option :value="false">Exclusive</option>
-          </select>
-          <button type="submit" class="primary-btn" :disabled="loading.taxConfigs">
-            <span v-if="loading.taxConfigs" class="spinner"></span>
-            <span v-else>{{ editingTaxConfig ? 'Update' : 'Add Tax' }}</span>
-          </button>
-          <button v-if="editingTaxConfig" type="button" class="cancel-btn" @click="cancelTaxEdit">Cancel</button>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Tax Name *</label>
+              <input v-model="newTaxConfig.name" placeholder="e.g., VAT, Sales Tax, Excise" required />
+            </div>
+            <div class="form-group">
+              <label>Tax Type *</label>
+              <select v-model="newTaxConfig.tax_type" required>
+                <option value="VAT">VAT</option>
+                <option value="Excise">Excise</option>
+                <option value="Withholding">Withholding</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Rate (%) *</label>
+              <input v-model.number="newTaxConfig.rate" type="number" step="0.01" min="0" max="100" placeholder="0.00" required />
+            </div>
+            <div class="form-group">
+              <label>Calculation Method *</label>
+              <select v-model="newTaxConfig.is_inclusive" required>
+                <option :value="false">Exclusive (add to price)</option>
+                <option :value="true">Inclusive (already in price)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input v-model="newTaxConfig.description" placeholder="e.g., Kenya standard VAT rate" />
+          </div>
+          <div class="form-group checkbox-group">
+            <label>
+              <input v-model="newTaxConfig.is_active" type="checkbox" />
+              Active
+            </label>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary-btn" :disabled="loading.taxConfigs">
+              <span v-if="loading.taxConfigs" class="spinner"></span>
+              <span v-else>{{ editingTaxConfig ? 'Update Tax' : 'Add Tax' }}</span>
+            </button>
+            <button v-if="editingTaxConfig" type="button" class="cancel-btn" @click="cancelTaxEdit">Cancel</button>
+          </div>
         </form>
 
         <div v-if="loading.taxConfigs" class="loading-container">
@@ -199,9 +302,9 @@
             <h2>Receipt Printer Settings</h2>
             <p class="info-text">Configure how receipts are printed</p>
           </div>
-          <button 
-            v-if="hasPrinterChanges" 
-            @click="savePrinterSettings" 
+          <button
+            v-if="hasPrinterChanges"
+            @click="savePrinterSettings"
             class="save-btn"
             :disabled="loading.printerSettings"
           >
@@ -216,10 +319,43 @@
         </div>
         <div v-else class="printer-settings-form">
           <div class="form-section">
+            <h3><i class="fas fa-image"></i> Receipt Logo</h3>
+            <p class="section-info">Upload a business logo to print on receipts and invoices</p>
+
+            <div class="logo-uploader">
+              <div v-if="printerSettings.receipt_logo_url" class="logo-preview-wrap">
+                <img :src="printerSettings.receipt_logo_url" alt="Receipt Logo" class="logo-preview" />
+              </div>
+              <div v-else class="logo-placeholder">
+                <i class="fas fa-image"></i>
+                <span>No logo uploaded</span>
+              </div>
+
+              <div class="logo-actions">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                  @change="uploadPrinterLogo"
+                  :disabled="logoUploading"
+                />
+                <button
+                  type="button"
+                  class="delete-btn"
+                  @click="removePrinterLogo"
+                  :disabled="logoUploading || !printerSettings.receipt_logo_path"
+                >
+                  <i :class="logoUploading ? 'fas fa-spinner fa-spin' : 'fas fa-trash'"></i>
+                  Remove Logo
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
             <h3><i class="fas fa-align-left"></i> Receipt Header</h3>
             <p class="section-info">This text appears at the top of every receipt</p>
-            <textarea 
-              v-model="printerSettings.header_message" 
+            <textarea
+              v-model="printerSettings.header_message"
               placeholder="Business Name&#10;Address Line 1&#10;Address Line 2&#10;Phone Number"
               rows="4"
               @input="checkPrinterChanges"
@@ -229,8 +365,8 @@
           <div class="form-section">
             <h3><i class="fas fa-align-right"></i> Receipt Footer</h3>
             <p class="section-info">This text appears at the bottom of every receipt</p>
-            <textarea 
-              v-model="printerSettings.footer_message" 
+            <textarea
+              v-model="printerSettings.footer_message"
               placeholder="Thank you for your business!&#10;Return policy: 7 days with receipt&#10;Visit us again!"
               rows="4"
               @input="checkPrinterChanges"
@@ -281,6 +417,12 @@
             <h3><i class="fas fa-eye"></i> Receipt Preview</h3>
             <div class="receipt-preview">
               <div class="receipt-header">
+                <img
+                  v-if="printerSettings.show_logo && printerSettings.receipt_logo_url"
+                  :src="printerSettings.receipt_logo_url"
+                  alt="Business Logo"
+                  class="receipt-preview-logo"
+                />
                 <div v-if="printerSettings.header_message" v-html="formatPreviewText(printerSettings.header_message)"></div>
                 <div v-else class="preview-placeholder">Header will appear here</div>
               </div>
@@ -306,6 +448,309 @@
           </div>
         </div>
       </div>
+
+      <div v-else-if="currentTab === 'Invoice Look'">
+        <div class="tab-header">
+          <div>
+            <h2>Invoice Look & Feel</h2>
+            <p class="info-text">Customize how invoices appear when printed</p>
+          </div>
+          <button
+            v-if="hasPrinterChanges"
+            @click="savePrinterSettings"
+            class="save-btn"
+            :disabled="loading.printerSettings"
+          >
+            <i class="fas fa-save"></i>
+            Save Changes
+          </button>
+        </div>
+
+        <div class="printer-settings-form">
+          <div class="form-section">
+            <h3><i class="fas fa-file-invoice"></i> Invoice Header</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Invoice Title</label>
+                <input
+                  v-model="printerSettings.invoice_title"
+                  placeholder="INVOICE"
+                  @input="checkPrinterChanges"
+                />
+              </div>
+              <div class="form-group">
+                <label>Invoice Subtitle</label>
+                <input
+                  v-model="printerSettings.invoice_subtitle"
+                  placeholder="Thank you for your business"
+                  @input="checkPrinterChanges"
+                />
+              </div>
+            </div>
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="printerSettings.invoice_show_logo" @change="checkPrinterChanges" />
+                <span>Show company logo on printed invoice</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3><i class="fas fa-align-left"></i> Invoice Footer Note</h3>
+            <textarea
+              v-model="printerSettings.invoice_footer_note"
+              rows="3"
+              placeholder="Payment due as per agreed terms"
+              @input="checkPrinterChanges"
+            ></textarea>
+          </div>
+
+          <div class="preview-section">
+            <h3><i class="fas fa-eye"></i> Invoice Preview</h3>
+            <div class="invoice-preview-card">
+              <img
+                v-if="printerSettings.invoice_show_logo && printerSettings.receipt_logo_url"
+                :src="printerSettings.receipt_logo_url"
+                alt="Invoice Logo"
+                class="invoice-preview-logo"
+              />
+              <h4>{{ printerSettings.invoice_title || 'INVOICE' }}</h4>
+              <p class="invoice-subtitle" v-if="printerSettings.invoice_subtitle">{{ printerSettings.invoice_subtitle }}</p>
+              <div class="receipt-divider-thin">────────────────────────────────</div>
+              <p><strong>Invoice No:</strong> INV-2026-0001</p>
+              <p><strong>Date:</strong> {{ new Date().toLocaleDateString() }}</p>
+              <p><strong>Customer:</strong> Sample Customer</p>
+              <div class="receipt-divider-thin">────────────────────────────────</div>
+              <p><strong>Total:</strong> Ksh 8,720.00</p>
+              <p class="invoice-note" v-if="printerSettings.invoice_footer_note">{{ printerSettings.invoice_footer_note }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- UOMs Tab -->
+      <div v-else-if="currentTab === 'UOMs'">
+        <div class="tab-header">
+          <div>
+            <h2>Units of Measure <span class="count">({{ uoms.length }} total)</span></h2>
+            <p class="info-text">Create and manage custom UOMs for your business</p>
+          </div>
+        </div>
+
+        <form class="custom-form" @submit.prevent="editingUOM ? updateUOM() : addUOM()">
+          <div class="form-row">
+            <div class="form-group">
+              <label>UOM Name *</label>
+              <input v-model="newUOM.name" placeholder="e.g., Millilitre, Kilogram" required />
+            </div>
+            <div class="form-group">
+              <label>Abbreviation *</label>
+              <input v-model="newUOM.abbreviation" placeholder="e.g., ml, kg" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Type</label>
+              <select v-model="newUOM.type">
+                <option value="">Select Type</option>
+                <option value="volume">Volume</option>
+                <option value="weight">Weight</option>
+                <option value="length">Length</option>
+                <option value="area">Area</option>
+                <option value="count">Count</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input v-model="newUOM.description" placeholder="Optional description" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary-btn" :disabled="loading.uoms">
+              <span v-if="loading.uoms" class="spinner"></span>
+              <span v-else>{{ editingUOM ? 'Update UOM' : 'Add UOM' }}</span>
+            </button>
+            <button v-if="editingUOM" type="button" class="cancel-btn" @click="cancelUOMEdit">Cancel</button>
+          </div>
+        </form>
+
+        <div v-if="loading.uoms" class="loading-container">
+          <div class="spinner large"></div>
+          <p>Loading UOMs...</p>
+        </div>
+        <div v-else-if="uoms.length === 0" class="empty-state">
+          <i class="fas fa-ruler"></i>
+          <p>No UOMs found</p>
+          <small>Add your first UOM above</small>
+        </div>
+        <div v-else class="table-wrapper">
+          <div class="uom-filters">
+            <button 
+              v-for="type in uomTypes" 
+              :key="type" 
+              :class="['filter-btn', { active: activeUOMFilter === type }]"
+              @click="activeUOMFilter = activeUOMFilter === type ? null : type"
+            >
+              {{ type || 'All' }}
+            </button>
+          </div>
+          <table class="uom-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Abbreviation</th>
+                <th>Type</th>
+                <th>System</th>
+                <th>Description</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="uom in filteredUOMs" :key="uom.id" :class="{ 'system-uom': uom.is_system }">
+                <td>{{ uom.name }}</td>
+                <td><span class="abbreviation-badge">{{ uom.abbreviation }}</span></td>
+                <td><span v-if="uom.type" class="type-badge" :class="uom.type">{{ uom.type }}</span></td>
+                <td><span v-if="uom.is_system" class="system-badge">✓ System</span></td>
+                <td class="description-cell">{{ uom.description || '—' }}</td>
+                <td class="actions-cell">
+                  <button 
+                    v-if="!uom.is_system" 
+                    class="edit-btn" 
+                    @click="editUOM(uom)" 
+                    title="Edit"
+                  >
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <button 
+                    v-if="!uom.is_system" 
+                    class="delete-btn" 
+                    @click="deleteUOM(uom.id)" 
+                    title="Delete"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                  <span v-else class="locked-badge" title="System UOM cannot be edited">
+                    <i class="fas fa-lock"></i>
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-else-if="currentTab === 'Pricing Groups'">
+        <div class="tab-header">
+          <div>
+            <h2>Pricing Groups <span class="count">({{ priceGroups.length }} total)</span></h2>
+            <p class="info-text">Each company starts with Retail Default, Stockist, and Wholesale pricing groups. You can edit them or toggle them on and off here.</p>
+          </div>
+        </div>
+
+        <div class="pricing-groups-help">
+          <div class="help-card">
+            <h3><i class="fas fa-users"></i> Customer Assignment</h3>
+            <p>Assign a pricing group to each customer from the customer management form.</p>
+          </div>
+          <div class="help-card">
+            <h3><i class="fas fa-tags"></i> Product Pricing</h3>
+            <p>Set different prices for each pricing group inside the product add/edit form.</p>
+          </div>
+        </div>
+
+        <form class="price-group-form" @submit.prevent="editingPriceGroup ? updatePriceGroup() : addPriceGroup()">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Group Name *</label>
+              <input v-model="newPriceGroup.name" placeholder="e.g., Retail Default" required />
+            </div>
+            <div class="form-group">
+              <label>Code *</label>
+              <input v-model="newPriceGroup.code" placeholder="e.g., RETAIL_DEFAULT" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Discount %</label>
+              <input v-model.number="newPriceGroup.discount_percentage" type="number" min="0" max="100" step="0.01" placeholder="0.00" required />
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input v-model="newPriceGroup.description" placeholder="Who this group is meant for" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary-btn" :disabled="loading.priceGroups">
+              <span v-if="loading.priceGroups" class="spinner"></span>
+              <span v-else>{{ editingPriceGroup ? 'Update Group' : 'Add Group' }}</span>
+            </button>
+            <button v-if="editingPriceGroup" type="button" class="cancel-btn" @click="cancelPriceGroupEdit">Cancel</button>
+          </div>
+        </form>
+
+        <div v-if="loading.priceGroups" class="loading-container">
+          <div class="spinner large"></div>
+          <p>Loading pricing groups...</p>
+        </div>
+        <div v-else-if="priceGroups.length === 0" class="empty-state">
+          <i class="fas fa-layer-group"></i>
+          <p>No pricing groups found</p>
+          <small>Default groups will appear automatically for this company</small>
+        </div>
+        <div v-else class="price-group-grid">
+          <div
+            v-for="group in priceGroups"
+            :key="group.id"
+            class="price-group-card"
+            :class="{ enabled: group.is_enabled !== false, system: group.is_system }"
+          >
+            <div class="price-group-top">
+              <div class="price-group-icon">
+                <i class="fas fa-tags"></i>
+              </div>
+              <div class="price-group-info">
+                <h3 class="price-group-name">{{ group.name }}</h3>
+                <p class="group-description">{{ group.description || 'No description provided' }}</p>
+                <p class="group-code">{{ group.code }}</p>
+              </div>
+              <div class="payment-toggle">
+                <label class="pricing-toggle" :title="isRetailDefaultGroup(group) ? 'Retail Default must stay enabled' : (group.is_enabled ? 'Disable pricing group' : 'Enable pricing group')">
+                  <input
+                    type="checkbox"
+                    :checked="group.is_enabled !== false"
+                    :disabled="loading.priceGroups || isRetailDefaultGroup(group)"
+                    @change="togglePriceGroup(group)"
+                    :aria-label="`${group.name} pricing group toggle`"
+                  />
+                  <span class="pricing-toggle-switch" :class="{ active: group.is_enabled !== false }">
+                    <span class="pricing-toggle-slider"></span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div class="price-group-meta">
+              <span class="discount-badge">{{ Number(group.discount_percentage || 0).toFixed(2) }}% off</span>
+              <span class="status-badge" :class="group.is_enabled ? 'enabled' : 'disabled'">
+                {{ isRetailDefaultGroup(group) ? 'Always On' : (group.is_enabled ? 'Enabled' : 'Disabled') }}
+              </span>
+              <span v-if="group.is_system" class="system-badge">Default</span>
+              <span v-else class="custom-badge">Custom</span>
+            </div>
+
+            <div class="price-group-actions">
+              <span class="toggle-text">{{ isRetailDefaultGroup(group) ? 'Always On' : (group.is_enabled ? 'On' : 'Off') }}</span>
+              <button class="edit-btn" @click="editPriceGroup(group)" title="Edit pricing group">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="delete-btn" @click="deletePriceGroup(group.id)" :disabled="group.is_system" title="Delete pricing group">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -314,11 +759,12 @@
 import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
 
-const tabs = ['Product Categories', 'Warehouses', 'Payment Methods', 'Tax Configuration', 'Printer Settings'];
+const tabs = ['Product Categories', 'Warehouses', 'Payment Methods', 'Tax Configuration', 'Printer Settings', 'Invoice Look', 'UOMs', 'Pricing Groups'];
 const currentTab = ref(tabs[0]);
 
 const categories = ref([]);
-const newCategory = ref('');
+const newCategory = ref({ name: '', parent_id: null, description: '' });
+const expandedCategories = ref([]);
 const warehouses = ref([]);
 const newWarehouse = ref({ name: '', type: '' });
 const paymentMethods = ref([]);
@@ -326,10 +772,30 @@ const originalPaymentStates = ref({});
 const hasPaymentChanges = ref(false);
 const editingWarehouse = ref(null);
 const currentUser = ref(null);
+const priceGroups = ref([]);
+const newPriceGroup = ref({
+  name: '',
+  code: '',
+  description: '',
+  discount_percentage: 0
+});
+const editingPriceGroup = ref(null);
+
+// Computed root categories
+const rootCategories = computed(() => {
+  return categories.value.filter(c => !c.parent_id);
+});
 
 // Tax Configuration state
 const taxConfigs = ref([]);
-const newTaxConfig = ref({ name: '', rate: 0, is_inclusive: true });
+const newTaxConfig = ref({ 
+  name: '', 
+  tax_type: 'VAT',
+  rate: 0, 
+  is_inclusive: false,
+  is_active: true,
+  description: ''
+});
 const editingTaxConfig = ref(null);
 
 // Printer Settings state
@@ -337,20 +803,41 @@ const printerSettings = ref({
   header_message: '',
   footer_message: '',
   show_logo: true,
+  receipt_logo_path: null,
+  receipt_logo_url: null,
   show_taxes: true,
   show_discounts: true,
   paper_size: '58mm',
-  alignment: 'center'
+  alignment: 'center',
+  invoice_title: 'INVOICE',
+  invoice_subtitle: '',
+  invoice_footer_note: '',
+  invoice_show_logo: true,
 });
 const originalPrinterSettings = ref({});
 const hasPrinterChanges = ref(false);
+const logoUploading = ref(false);
+
+// UOMs state
+const uoms = ref([]);
+const newUOM = ref({ 
+  name: '', 
+  abbreviation: '', 
+  type: '',
+  description: ''
+});
+const editingUOM = ref(null);
+const activeUOMFilter = ref(null);
+const uomTypes = ['volume', 'weight', 'length', 'area', 'count', 'other'];
 
 const loading = ref({
   categories: false,
   warehouses: false,
   paymentMethods: false,
   taxConfigs: false,
-  printerSettings: false
+  printerSettings: false,
+  uoms: false,
+  priceGroups: false
 });
 
 const alert = ref({
@@ -371,7 +858,7 @@ const showAlert = (message, type = 'success') => {
 const fetchCategories = async () => {
   loading.value.categories = true;
   try {
-    const res = await axios.get('/business-categories');
+    const res = await axios.get('/product-categories');
     categories.value = res.data;
   } catch (error) {
     showAlert('Failed to load categories', 'error');
@@ -380,25 +867,63 @@ const fetchCategories = async () => {
   }
 };
 
+const toggleCategoryExpand = (id) => {
+  if (expandedCategories.value.includes(id)) {
+    expandedCategories.value = expandedCategories.value.filter(c => c !== id);
+  } else {
+    expandedCategories.value.push(id);
+  }
+};
+
+const editCategory = (category) => {
+  newCategory.value = {
+    name: category.name,
+    parent_id: category.parent_id,
+    description: category.description,
+    id: category.id
+  };
+  // Scroll to form
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 const addCategory = async () => {
+  if (!newCategory.value.name.trim()) {
+    showAlert('Category name is required', 'error');
+    return;
+  }
+
   loading.value.categories = true;
   try {
-    await axios.post('/business-categories', { name: newCategory.value });
-    newCategory.value = '';
+    const payload = {
+      name: newCategory.value.name,
+      parent_id: newCategory.value.parent_id,
+      description: newCategory.value.description
+    };
+
+    if (newCategory.value.id) {
+      // Update existing category
+      await axios.put(`/product-categories/${newCategory.value.id}`, payload);
+      showAlert('Category updated successfully');
+    } else {
+      // Create new category
+      await axios.post('/product-categories', payload);
+      showAlert('Category added successfully');
+    }
+    
+    newCategory.value = { name: '', parent_id: null, description: '' };
     await fetchCategories();
-    showAlert('Category added successfully');
   } catch (error) {
-    showAlert('Failed to add category', 'error');
+    showAlert(error.response?.data?.message || 'Failed to save category', 'error');
   } finally {
     loading.value.categories = false;
   }
 };
 
 const deleteCategory = async (id) => {
-  if (!confirm('Are you sure you want to delete this category?')) return;
+  if (!confirm('Are you sure you want to delete this category and all its subcategories?')) return;
   loading.value.categories = true;
   try {
-    await axios.delete(`/business-categories/${id}`);
+    await axios.delete(`/product-categories/${id}`);
     await fetchCategories();
     showAlert('Category deleted successfully');
   } catch (error) {
@@ -415,7 +940,7 @@ const handleBulkUpload = async (e) => {
   try {
     const formData = new FormData();
     formData.append('csv_file', file);
-    await axios.post('/business-categories/import-csv', formData);
+    await axios.post('/product-categories/bulk-upload', formData);
     await fetchCategories();
     showAlert('Categories imported successfully');
   } catch (error) {
@@ -446,7 +971,7 @@ const formatDate = (dateString) => {
 
 const fetchCurrentUser = async () => {
   try {
-    const res = await axios.get('/api/user');
+    const res = await axios.get('/user');
     // Handle the user response - it could be wrapped or direct
     const userData = res.data.data || res.data;
     currentUser.value = userData;
@@ -539,10 +1064,10 @@ const fetchPaymentMethods = async () => {
   loading.value.paymentMethods = true;
   try {
     const res = await axios.get('/payment-methods');
-    paymentMethods.value = res.data;
+    paymentMethods.value = Array.isArray(res.data) ? res.data : [];
     // Store original states
     originalPaymentStates.value = {};
-    res.data.forEach(pm => {
+    paymentMethods.value.forEach(pm => {
       originalPaymentStates.value[pm.id] = pm.is_enabled;
     });
     hasPaymentChanges.value = false;
@@ -555,9 +1080,162 @@ const fetchPaymentMethods = async () => {
   }
 };
 
+const resetPriceGroupForm = () => {
+  newPriceGroup.value = {
+    name: '',
+    code: '',
+    description: '',
+    discount_percentage: 0
+  }
+  editingPriceGroup.value = null
+}
+
+const fetchPriceGroups = async () => {
+  loading.value.priceGroups = true
+  try {
+    const res = await axios.get('/price-groups', {
+      params: { include_disabled: 1 }
+    })
+    priceGroups.value = Array.isArray(res.data)
+      ? res.data.map((group) => ({
+        ...group,
+        is_enabled: group.is_enabled === undefined || group.is_enabled === null
+          ? true
+          : Boolean(group.is_enabled)
+      }))
+      : []
+  } catch (error) {
+    console.error('Price groups error:', error)
+    showAlert(error.response?.data?.message || 'Failed to load pricing groups', 'error')
+    priceGroups.value = []
+  } finally {
+    loading.value.priceGroups = false
+  }
+}
+
+const addPriceGroup = async () => {
+  loading.value.priceGroups = true
+  try {
+    await axios.post('/price-groups', newPriceGroup.value)
+    await fetchPriceGroups()
+    resetPriceGroupForm()
+    showAlert('Pricing group added successfully')
+  } catch (error) {
+    const validationMessage = error.response?.data?.errors
+      ? Object.values(error.response.data.errors).flat().join(', ')
+      : null
+    showAlert(validationMessage || error.response?.data?.message || 'Failed to add pricing group', 'error')
+  } finally {
+    loading.value.priceGroups = false
+  }
+}
+
+const editPriceGroup = (group) => {
+  editingPriceGroup.value = group.id
+  newPriceGroup.value = {
+    name: group.name,
+    code: group.code,
+    description: group.description || '',
+    discount_percentage: Number(group.discount_percentage || 0)
+  }
+}
+
+const updatePriceGroup = async () => {
+  if (!editingPriceGroup.value) return
+
+  loading.value.priceGroups = true
+  try {
+    await axios.put(`/price-groups/${editingPriceGroup.value}`, newPriceGroup.value)
+    await fetchPriceGroups()
+    resetPriceGroupForm()
+    showAlert('Pricing group updated successfully')
+  } catch (error) {
+    const validationMessage = error.response?.data?.errors
+      ? Object.values(error.response.data.errors).flat().join(', ')
+      : null
+    showAlert(validationMessage || error.response?.data?.message || 'Failed to update pricing group', 'error')
+  } finally {
+    loading.value.priceGroups = false
+  }
+}
+
+const cancelPriceGroupEdit = () => {
+  resetPriceGroupForm()
+}
+
+const deletePriceGroup = async (id) => {
+  if (!confirm('Are you sure you want to delete this pricing group?')) return
+
+  loading.value.priceGroups = true
+  try {
+    await axios.delete(`/price-groups/${id}`)
+    await fetchPriceGroups()
+    showAlert('Pricing group deleted successfully')
+  } catch (error) {
+    showAlert(error.response?.data?.message || 'Failed to delete pricing group', 'error')
+  } finally {
+    loading.value.priceGroups = false
+  }
+}
+
+const togglePriceGroup = async (group) => {
+  if (isRetailDefaultGroup(group)) {
+    showAlert('Retail Default pricing group must always remain enabled', 'warning')
+    return
+  }
+
+  loading.value.priceGroups = true
+  try {
+    const res = await axios.post(`/price-groups/${group.id}/toggle`)
+    const updatedGroup = res.data?.data
+
+    if (updatedGroup?.id) {
+      const idx = priceGroups.value.findIndex((item) => Number(item.id) === Number(updatedGroup.id))
+      if (idx !== -1) {
+        priceGroups.value[idx] = {
+          ...priceGroups.value[idx],
+          ...updatedGroup,
+          is_enabled: updatedGroup.is_enabled === undefined || updatedGroup.is_enabled === null
+            ? true
+            : Boolean(updatedGroup.is_enabled)
+        }
+      }
+    } else {
+      await fetchPriceGroups()
+    }
+
+    showAlert(res.data?.message || 'Pricing group status updated successfully')
+  } catch (error) {
+    showAlert(error.response?.data?.message || 'Failed to update pricing group status', 'error')
+  } finally {
+    loading.value.priceGroups = false
+  }
+}
+
+const normalizePricingGroupIdentifier = (value) => {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+const isRetailDefaultGroup = (group) => {
+  if (!group) return false
+
+  const code = normalizePricingGroupIdentifier(group.code)
+  const name = normalizePricingGroupIdentifier(group.name)
+
+  return code === 'retail_default' || name === 'retail_default' || code === 'retail' || name === 'retail'
+}
+
 const togglePaymentMethodLocal = (id) => {
   const method = paymentMethods.value.find(pm => pm.id === id);
   if (method) {
+    if (!method.allowed_by_subscription) {
+      showAlert(`${method.name} is not available in your current subscription.`, 'warning');
+      return;
+    }
     method.is_enabled = !method.is_enabled;
     checkForChanges();
   }
@@ -578,13 +1256,15 @@ const savePaymentChanges = async () => {
   loading.value.paymentMethods = true;
   try {
     const changedMethods = paymentMethods.value.filter(pm => 
-      originalPaymentStates.value[pm.id] !== pm.is_enabled
+      pm.allowed_by_subscription && originalPaymentStates.value[pm.id] !== pm.is_enabled
     );
 
     let savedCount = 0;
     for (const method of changedMethods) {
       try {
-        await axios.post(`/payment-methods/${method.id}/toggle`);
+        await axios.post(`/payment-methods/${method.id}/set-enabled`, {
+          is_enabled: !!method.is_enabled
+        });
         originalPaymentStates.value[method.id] = method.is_enabled;
         savedCount++;
       } catch (error) {
@@ -594,7 +1274,8 @@ const savePaymentChanges = async () => {
       }
     }
 
-    hasPaymentChanges.value = false;
+    // Re-read from backend so local vars always match server truth.
+    await fetchPaymentMethods();
     
     if (savedCount === changedMethods.length) {
       showAlert(`Successfully updated ${savedCount} payment method${savedCount !== 1 ? 's' : ''}`);
@@ -606,6 +1287,14 @@ const savePaymentChanges = async () => {
   } finally {
     loading.value.paymentMethods = false;
   }
+};
+
+const formatRequiredFeature = (feature) => {
+  const labels = {
+    mpesa: 'M-Pesa Integration'
+  };
+
+  return labels[feature] || feature || 'subscription access';
 };
 
 const getPaymentIcon = (name) => {
@@ -627,6 +1316,20 @@ const fetchTaxConfigs = async () => {
   try {
     const res = await axios.get('/api/tax-configurations');
     taxConfigs.value = Array.isArray(res.data) ? res.data : [];
+    
+    // If currently editing a tax, check if it still exists
+    if (editingTaxConfig.value && !taxConfigs.value.some(t => t.id === editingTaxConfig.value)) {
+      showAlert('The tax configuration you were editing was deleted.', 'error');
+      editingTaxConfig.value = null;
+      newTaxConfig.value = { 
+        name: '', 
+        tax_type: 'VAT',
+        rate: 0, 
+        is_inclusive: false,
+        is_active: true,
+        description: ''
+      };
+    }
   } catch (error) {
     console.error('Tax configs error:', error);
     showAlert('Failed to load tax configurations', 'error');
@@ -640,7 +1343,14 @@ const addTaxConfig = async () => {
   loading.value.taxConfigs = true;
   try {
     await axios.post('/api/tax-configurations', newTaxConfig.value);
-    newTaxConfig.value = { name: '', rate: 0, is_inclusive: true };
+    newTaxConfig.value = { 
+      name: '', 
+      tax_type: 'VAT',
+      rate: 0, 
+      is_inclusive: false,
+      is_active: true,
+      description: ''
+    };
     await fetchTaxConfigs();
     showAlert('Tax configuration added successfully');
   } catch (error) {
@@ -653,9 +1363,12 @@ const addTaxConfig = async () => {
 const editTaxConfig = (tax) => {
   editingTaxConfig.value = tax.id;
   newTaxConfig.value = { 
-    name: tax.name, 
+    name: tax.name,
+    tax_type: tax.tax_type || 'VAT',
     rate: tax.rate, 
-    is_inclusive: tax.is_inclusive 
+    is_inclusive: tax.is_inclusive,
+    is_active: tax.is_active !== false,
+    description: tax.description || ''
   };
 };
 
@@ -664,12 +1377,25 @@ const updateTaxConfig = async () => {
   loading.value.taxConfigs = true;
   try {
     await axios.put(`/api/tax-configurations/${editingTaxConfig.value}`, newTaxConfig.value);
-    newTaxConfig.value = { name: '', rate: 0, is_inclusive: true };
+    newTaxConfig.value = { 
+      name: '', 
+      tax_type: 'VAT',
+      rate: 0, 
+      is_inclusive: false,
+      is_active: true,
+      description: ''
+    };
     editingTaxConfig.value = null;
     await fetchTaxConfigs();
     showAlert('Tax configuration updated successfully');
   } catch (error) {
-    showAlert(error.response?.data?.message || 'Failed to update tax configuration', 'error');
+    if (error.response?.status === 404) {
+      showAlert('This tax configuration was deleted. Refreshing list...', 'error');
+      editingTaxConfig.value = null;
+      await fetchTaxConfigs();
+    } else {
+      showAlert(error.response?.data?.message || 'Failed to update tax configuration', 'error');
+    }
   } finally {
     loading.value.taxConfigs = false;
   }
@@ -677,7 +1403,14 @@ const updateTaxConfig = async () => {
 
 const cancelTaxEdit = () => {
   editingTaxConfig.value = null;
-  newTaxConfig.value = { name: '', rate: 0, is_inclusive: true };
+  newTaxConfig.value = { 
+    name: '', 
+    tax_type: 'VAT',
+    rate: 0, 
+    is_inclusive: false,
+    is_active: true,
+    description: ''
+  };
 };
 
 const deleteTaxConfig = async (id) => {
@@ -716,10 +1449,16 @@ const fetchPrinterSettings = async () => {
       header_message: res.data.header_message || '',
       footer_message: res.data.footer_message || '',
       show_logo: res.data.show_logo !== undefined ? res.data.show_logo : true,
+      receipt_logo_path: res.data.receipt_logo_path || null,
+      receipt_logo_url: res.data.receipt_logo_url || null,
       show_taxes: res.data.show_taxes !== undefined ? res.data.show_taxes : true,
       show_discounts: res.data.show_discounts !== undefined ? res.data.show_discounts : true,
       paper_size: res.data.paper_size || '58mm',
-      alignment: res.data.alignment || 'center'
+      alignment: res.data.alignment || 'center',
+      invoice_title: res.data.invoice_title || 'INVOICE',
+      invoice_subtitle: res.data.invoice_subtitle || '',
+      invoice_footer_note: res.data.invoice_footer_note || '',
+      invoice_show_logo: res.data.invoice_show_logo !== undefined ? res.data.invoice_show_logo : true,
     };
     originalPrinterSettings.value = JSON.parse(JSON.stringify(printerSettings.value));
     hasPrinterChanges.value = false;
@@ -755,8 +1494,153 @@ const savePrinterSettings = async () => {
   }
 };
 
+const uploadPrinterLogo = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  logoUploading.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const res = await axios.post('/api/printer-settings/logo', formData);
+
+    printerSettings.value.receipt_logo_path = res.data.receipt_logo_path || null;
+    printerSettings.value.receipt_logo_url = res.data.receipt_logo_url || null;
+    originalPrinterSettings.value.receipt_logo_path = printerSettings.value.receipt_logo_path;
+    originalPrinterSettings.value.receipt_logo_url = printerSettings.value.receipt_logo_url;
+    checkPrinterChanges();
+    showAlert('Printer logo uploaded successfully');
+  } catch (error) {
+    showAlert(error.response?.data?.message || 'Failed to upload logo', 'error');
+  } finally {
+    logoUploading.value = false;
+    event.target.value = '';
+  }
+};
+
+const removePrinterLogo = async () => {
+  if (!printerSettings.value.receipt_logo_path) return;
+  logoUploading.value = true;
+  try {
+    await axios.delete('/api/printer-settings/logo');
+    printerSettings.value.receipt_logo_path = null;
+    printerSettings.value.receipt_logo_url = null;
+    originalPrinterSettings.value.receipt_logo_path = null;
+    originalPrinterSettings.value.receipt_logo_url = null;
+    checkPrinterChanges();
+    showAlert('Printer logo removed successfully');
+  } catch (error) {
+    showAlert(error.response?.data?.message || 'Failed to remove logo', 'error');
+  } finally {
+    logoUploading.value = false;
+  }
+};
+
 const formatPreviewText = (text) => {
   return text.split('\n').map(line => `<p>${line || '&nbsp;'}</p>`).join('');
+};
+
+// UOMs computed property
+const filteredUOMs = computed(() => {
+  if (!activeUOMFilter.value) return uoms.value;
+  return uoms.value.filter(uom => uom.type === activeUOMFilter.value);
+});
+
+// UOMs methods
+const fetchUOMs = async () => {
+  loading.value.uoms = true;
+  try {
+    const res = await axios.get('/uoms');
+    uoms.value = res.data;
+  } catch (error) {
+    console.error('UOMs error:', error);
+    showAlert('Failed to load UOMs', 'error');
+  } finally {
+    loading.value.uoms = false;
+  }
+};
+
+const addUOM = async () => {
+  if (!newUOM.value.name || !newUOM.value.abbreviation) {
+    showAlert('Name and Abbreviation are required', 'error');
+    return;
+  }
+
+  loading.value.uoms = true;
+  try {
+    await axios.post('/uoms', {
+      name: newUOM.value.name,
+      abbreviation: newUOM.value.abbreviation,
+      type: newUOM.value.type || 'other',
+      description: newUOM.value.description,
+      is_system: false
+    });
+    newUOM.value = { name: '', abbreviation: '', type: '', description: '' };
+    await fetchUOMs();
+    showAlert('UOM added successfully');
+  } catch (error) {
+    const errMsg = error.response?.data?.message || error.message;
+    showAlert(`Failed to add UOM: ${errMsg}`, 'error');
+  } finally {
+    loading.value.uoms = false;
+  }
+};
+
+const editUOM = (uom) => {
+  editingUOM.value = uom.id;
+  newUOM.value = {
+    name: uom.name,
+    abbreviation: uom.abbreviation,
+    type: uom.type || '',
+    description: uom.description
+  };
+};
+
+const updateUOM = async () => {
+  if (!newUOM.value.name || !newUOM.value.abbreviation) {
+    showAlert('Name and Abbreviation are required', 'error');
+    return;
+  }
+
+  loading.value.uoms = true;
+  try {
+    await axios.put(`/uoms/${editingUOM.value}`, {
+      name: newUOM.value.name,
+      abbreviation: newUOM.value.abbreviation,
+      type: newUOM.value.type || 'other',
+      description: newUOM.value.description
+    });
+    newUOM.value = { name: '', abbreviation: '', type: '', description: '' };
+    editingUOM.value = null;
+    await fetchUOMs();
+    showAlert('UOM updated successfully');
+  } catch (error) {
+    const errMsg = error.response?.data?.message || error.message;
+    showAlert(`Failed to update UOM: ${errMsg}`, 'error');
+  } finally {
+    loading.value.uoms = false;
+  }
+};
+
+const cancelUOMEdit = () => {
+  editingUOM.value = null;
+  newUOM.value = { name: '', abbreviation: '', type: '', description: '' };
+};
+
+const deleteUOM = async (id) => {
+  if (!confirm('Are you sure you want to delete this UOM? This action cannot be undone.')) return;
+  
+  loading.value.uoms = true;
+  try {
+    await axios.delete(`/uoms/${id}`);
+    await fetchUOMs();
+    showAlert('UOM deleted successfully');
+  } catch (error) {
+    const errMsg = error.response?.data?.message || error.message;
+    showAlert(`Failed to delete UOM: ${errMsg}`, 'error');
+  } finally {
+    loading.value.uoms = false;
+  }
 };
 
 onMounted(() => {
@@ -766,6 +1650,8 @@ onMounted(() => {
   fetchPaymentMethods();
   fetchTaxConfigs();
   fetchPrinterSettings();
+  fetchUOMs();
+  fetchPriceGroups();
 });
 </script>
 
@@ -1102,6 +1988,15 @@ onMounted(() => {
   overflow: hidden;
 }
 
+.payment-card.locked {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.payment-card.locked:hover {
+  transform: none;
+}
+
 .payment-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
@@ -1162,6 +2057,13 @@ onMounted(() => {
   flex: 1;
 }
 
+.payment-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .payment-name {
   font-size: 1.1rem;
   font-weight: 700;
@@ -1169,11 +2071,29 @@ onMounted(() => {
   margin: 0 0 0.5rem 0;
 }
 
+.locked-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .payment-desc {
   font-size: 0.875rem;
   color: #6b7280;
   margin: 0;
   line-height: 1.4;
+}
+
+.payment-lock-reason {
+  margin-top: 0.35rem;
+  color: #b45309;
+  font-size: 0.82rem;
 }
 
 .payment-toggle {
@@ -1192,6 +2112,10 @@ onMounted(() => {
 
 .toggle-switch.active {
   background: #10b981;
+}
+
+.toggle-switch.disabled {
+  background: #cbd5e1;
 }
 
 .toggle-slider {
@@ -1473,6 +2397,309 @@ onMounted(() => {
 
 .set-default-btn:disabled i {
   color: #d1d5db;
+}
+
+.pricing-groups-help {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.help-card {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.help-card h3 {
+  margin: 0 0 0.5rem 0;
+  color: #1f2937;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.help-card p {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.preset-groups-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.preset-groups-panel h3 {
+  margin: 0 0 0.25rem 0;
+  color: #1e3a8a;
+}
+
+.preset-groups-panel p {
+  margin: 0;
+  color: #475569;
+}
+
+.price-group-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.price-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.price-group-card {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.price-group-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.price-group-card.enabled {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border-color: #10b981;
+}
+
+.price-group-card.enabled::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 60px 60px 0;
+  border-color: transparent #10b981 transparent transparent;
+}
+
+.price-group-card.enabled::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  z-index: 1;
+}
+
+.price-group-top {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.price-group-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.price-group-card.enabled .price-group-icon {
+  background: #10b981;
+  color: white;
+}
+
+.price-group-card:hover .price-group-icon {
+  transform: scale(1.1);
+}
+
+.price-group-info {
+  flex: 1;
+}
+
+.price-group-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0;
+}
+
+.group-description {
+  margin: 0.45rem 0;
+  color: #6b7280;
+  line-height: 1.4;
+  font-size: 0.875rem;
+}
+
+.group-code {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.price-group-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.discount-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.status-badge {
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.status-badge.enabled {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+}
+
+.status-badge.disabled {
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
+}
+
+.custom-badge,
+.system-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.custom-badge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.system-badge {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.price-group-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.secondary-btn.small {
+  padding: 0.55rem 0.85rem;
+  font-size: 0.82rem;
+}
+
+.pricing-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pricing-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.pricing-toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  border-radius: 999px;
+  background: #d1d5db;
+  transition: background 0.3s ease;
+}
+
+.pricing-toggle-switch.active {
+  background: #10b981;
+}
+
+.pricing-toggle-slider {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.pricing-toggle-switch.active .pricing-toggle-slider {
+  transform: translateX(24px);
+}
+
+.pricing-toggle input:focus-visible + .pricing-toggle-switch {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.pricing-toggle input:disabled + .pricing-toggle-switch {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pricing-toggle input:disabled ~ .toggle-text {
+  opacity: 0.7;
+}
+
+.toggle-text {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #334155;
+  min-width: 72px;
 }
 
 .tax-card-actions .edit-btn,
@@ -1778,6 +3005,231 @@ onMounted(() => {
   padding: 0.5rem 0;
 }
 
+.logo-uploader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.logo-preview-wrap {
+  width: 120px;
+  height: 120px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  overflow: hidden;
+}
+
+.logo-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.logo-placeholder {
+  width: 120px;
+  height: 120px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.logo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.receipt-preview-logo {
+  max-width: 90px;
+  max-height: 90px;
+  object-fit: contain;
+  margin: 0 auto 0.75rem auto;
+  display: block;
+}
+
+.invoice-preview-card {
+  background: white;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.invoice-preview-logo {
+  max-width: 110px;
+  max-height: 80px;
+  object-fit: contain;
+  margin-bottom: 0.75rem;
+}
+
+.invoice-preview-card h4 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #111827;
+}
+
+.invoice-subtitle {
+  margin: 0.3rem 0 0.75rem 0;
+  color: #6b7280;
+}
+
+.invoice-note {
+  margin-top: 1rem;
+  font-style: italic;
+  color: #475569;
+}
+
+/* UOM Styles */
+.uom-filters {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid #e5e7eb;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  text-transform: capitalize;
+}
+
+.filter-btn:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.filter-btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.uom-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.uom-table thead {
+  background: #f3f4f6;
+}
+
+.uom-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.875rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.uom-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.uom-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.uom-table tbody tr.system-uom {
+  background: #fafafa;
+}
+
+.abbreviation-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #f0f0f0;
+  border-radius: 4px;
+  font-family: monospace;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.875rem;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.type-badge.volume {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.type-badge.weight {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.type-badge.length {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.type-badge.area {
+  background: #fed7aa;
+  color: #92400e;
+}
+
+.type-badge.count {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.type-badge.other {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.system-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #d1d5db;
+  color: #374151;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.locked-badge {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.description-cell {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .receipt-header p,
 .receipt-footer p {
   margin: 3px 0;
@@ -1900,5 +3352,249 @@ onMounted(() => {
     padding: 0.75rem;
     font-size: 0.95rem;
   }
+}
+
+/* Tax Configuration Form Styles */
+.tax-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid rgba(102, 126, 234, 0.1);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 0.95rem;
+}
+
+.form-group input,
+.form-group select {
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.checkbox-group {
+  flex-direction: row;
+  align-items: center;
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.form-actions button {
+  flex: 1;
+  max-width: 200px;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .tax-form {
+    padding: 1.5rem;
+    gap: 1rem;
+  }
+}
+
+/* Category Tree Styles */
+.category-tree {
+  margin-top: 2rem;
+}
+
+.category-item {
+  margin-bottom: 0.5rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.category-item:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  gap: 1rem;
+}
+
+.category-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.expand-btn {
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border-radius: 6px;
+  color: #667eea;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.expand-btn:hover {
+  background: #667eea;
+  color: white;
+}
+
+.expand-btn.expanded i {
+  transform: rotate(90deg);
+}
+
+.expand-placeholder {
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.category-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.category-desc {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-left: auto;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.subcategories {
+  background: #f9fafb;
+  padding: 0.5rem 0;
+}
+
+.sub-category {
+  margin: 0.5rem 1rem;
+  border-color: #d1d5db;
+  background: white;
+}
+
+.subcategory-marker {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  color: #d1d5db;
+  margin-bottom: 1rem;
+}
+
+.csv-upload {
+  background: #f0f9ff;
+  border: 1px dashed #0284c7;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin: 1.5rem 0;
+}
+
+.csv-upload label {
+  display: block;
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 0.75rem;
+}
+
+.csv-upload small {
+  display: block;
+  color: #0c4a6e;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.file-input {
+  padding: 0.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.sample-link {
+  display: inline-block;
+  margin-top: 0.75rem;
+  color: #0284c7;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.sample-link:hover {
+  color: #0369a1;
+  text-decoration: underline;
 }
 </style>

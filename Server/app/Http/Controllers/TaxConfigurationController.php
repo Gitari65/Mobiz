@@ -31,10 +31,7 @@ class TaxConfigurationController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-                $taxes = TaxConfiguration::where(function($q) use ($user) {
-                                $q->where('company_id', $user->company_id)
-                                    ->orWhereNull('company_id');
-                        })
+        $taxes = TaxConfiguration::where('company_id', $user->company_id)
             ->orderBy('is_default', 'desc')
             ->orderBy('name')
             ->get();
@@ -151,17 +148,7 @@ class TaxConfigurationController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        $tax = TaxConfiguration::where(function($q) use ($user) {
-                $q->where('company_id', $user->company_id)
-                  ->orWhereNull('company_id');
-            })->findOrFail($id);
-
-        // Disallow making a global config the company default
-        if ($tax->company_id === null) {
-            return response()->json([
-                'error' => 'Cannot set global tax configuration as company default. Create a company-specific tax config and set that as default.'
-            ], 422);
-        }
+        $tax = TaxConfiguration::where('company_id', $user->company_id)->findOrFail($id);
 
         TaxConfiguration::where('company_id', $user->company_id)->update(['is_default' => false]);
         $tax->update(['is_default' => true]);

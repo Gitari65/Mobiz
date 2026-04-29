@@ -270,7 +270,7 @@
 
     <!-- Modals -->
     <!-- Delete Modal -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+    <div v-if="showDeleteModal" class="modal-overlay">
       <div class="modal delete-modal">
         <div class="modal-header">
           <h3>
@@ -297,7 +297,7 @@
     </div>
 
     <!-- Restock Modal -->
-    <div v-if="showReplenishModal" class="modal-overlay" @click.self="closeReplenishModal">
+    <div v-if="showReplenishModal" class="modal-overlay">
       <div class="modal restock-modal">
         <div class="modal-header">
           <h3>
@@ -346,7 +346,7 @@
               <div v-for="(item, index) in replenishItems" :key="index" class="restock-item">
                 <div class="item-info">
                   <div class="item-name">{{ getProductName(item.product_id) }}</div>
-                  <div class="item-details">{{ item.quantity }} +ù {{ formatCurrency(item.cost) }}</div>
+                  <div class="item-details">{{ item.quantity }} +ï¿½ {{ formatCurrency(item.cost) }}</div>
                 </div>
                 <div class="item-total">{{ formatCurrency(item.quantity * item.cost) }}</div>
                 <button @click="removeReplenishItem(index)" class="remove-btn">
@@ -515,7 +515,7 @@ export default {
     async fetchInventory() {
       this.isLoading = true
       try {
-        const response = await axios.get('/api/products')
+        const response = await axios.get('/products')
         this.products = response.data.data || response.data || []
       } catch (error) {
         console.error('Error fetching inventory:', error)
@@ -665,7 +665,7 @@ export default {
         const payload = {
           items: this.replenishItems
         }
-        await axios.post('/api/inventory/restock', payload)
+        await axios.post('/inventory/restock', payload)
         await this.fetchInventory() // Refresh data
         this.closeReplenishModal()
       } catch (error) {

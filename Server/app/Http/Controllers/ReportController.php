@@ -9,6 +9,7 @@ use App\Models\Purchase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class ReportController extends Controller
@@ -110,7 +111,7 @@ class ReportController extends Controller
      */
     public function salesReport(Request $request)
     {
-        Log::info('🔍 SALES REPORT REQUEST', [
+        Log::info('SALES REPORT REQUEST', [
             'user_id' => auth()->id(),
             'company_id' => auth()->user()?->company_id,
             'start_date' => $request->input('start_date'),
@@ -119,76 +120,169 @@ class ReportController extends Controller
 
         $user = auth()->user();
         if (!$user || !$user->company_id) {
-            Log::warning('❌ Sales Report - Unauthorized or no company', [
+            Log::warning('Sales Report - Unauthorized or no company', [
                 'user_id' => $user?->id,
                 'company_id' => $user?->company_id,
             ]);
             return response()->json(['error' => 'Unauthorized or no company associated'], 403);
         }
 
+        $user->loadMissing('role');
+        $roleName = strtolower($user->role->name ?? '');
+        $isAdminRole = in_array($roleName, ['admin', 'administrator', 'superuser', 'super_user', 'super user'], true);
+        $isCashierRole = $roleName === 'cashier';
+
         $startDate = $request->input('start_date', Carbon::now()->subDays(30)->toDateString());
         $endDate = $request->input('end_date', Carbon::now()->toDateString());
+        $perPage = max(10, min((int) $request->input('per_page', 50), 200));
 
-        Log::info('📅 Date Range', [
-            'start' => $startDate,
-            'end' => $endDate,
-            'company_id' => $user->company_id,
-        ]);
+        $baseQuery = Sale::where('company_id', $user->company_id)
+            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
 
-        // Get sales for the company
-        $sales = Sale::where('company_id', $user->company_id)
-            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
-            ->with(['items.product', 'customer', 'user'])
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        Log::info('📊 Sales Query Results', [
-            'total_sales_found' => $sales->count(),
-            'company_id' => $user->company_id,
-            'date_range' => "{$startDate} to {$endDate}",
-        ]);
-
-        if ($sales->count() === 0) {
-            Log::warning('⚠️ No sales found for date range', [
-                'company_id' => $user->company_id,
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ]);
+        if ($isCashierRole) {
+            $baseQuery->where('user_id', $user->id);
         }
 
-        $totalRevenue = $sales->sum(function ($s) { return (float)$s->total; });
-        $totalDiscount = $sales->sum(function ($s) { return (float)$s->discount; });
-        $totalTax = $sales->sum(function ($s) { return (float)$s->tax; });
-        $totalTransactions = $sales->count();
+        $totalRevenue = (float) (clone $baseQuery)->sum('total');
+        $totalDiscount = (float) (clone $baseQuery)->sum('discount');
+        $totalTax = (float) (clone $baseQuery)->sum('tax');
+        $totalTransactions = (int) (clone $baseQuery)->count();
         $avgTransaction = $totalTransactions > 0 ? $totalRevenue / $totalTransactions : 0;
-        $totalItems = $sales->sum(function ($sale) {
-            return $sale->items->sum('quantity');
-        });
 
-        Log::info('💰 Sales Metrics Calculated', [
-            'total_revenue' => $totalRevenue,
-            'total_discount' => $totalDiscount,
-            'total_tax' => $totalTax,
-            'total_transactions' => $totalTransactions,
-            'avg_transaction' => $avgTransaction,
-            'total_items' => $totalItems,
-        ]);
+        $totalItems = (int) SaleItem::query()
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->where('sales.company_id', $user->company_id)
+            ->whereBetween('sales.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+            ->sum('sale_items.quantity');
 
-        $transactions = $sales->map(function ($sale) {
+        $transactionsPage = (clone $baseQuery)
+            ->with(['items', 'customer', 'user'])
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
+
+        $transactions = $transactionsPage->getCollection()->map(function ($sale) {
             return [
                 'id' => $sale->id,
-                'total' => (float)$sale->total,
-                'discount' => (float)$sale->discount,
-                'tax' => (float)$sale->tax,
+                'total' => (float) $sale->total,
+                'discount' => (float) $sale->discount,
+                'tax' => (float) $sale->tax,
                 'items_count' => $sale->items->sum('quantity'),
                 'customer_name' => $sale->customer ? $sale->customer->name : 'Walk-in',
                 'payment_method' => $sale->payment_method,
+                'mpesa_receipt_number' => $sale->mpesa_receipt_number,
+                'mpesa_phone_number' => $sale->mpesa_phone_number,
+                'cashier_id' => $sale->user_id,
                 'cashier' => $sale->user ? $sale->user->name : 'Unknown',
                 'created_at' => $sale->created_at->toISOString(),
             ];
-        });
+        })->values();
+
+        $cashierSummary = collect();
+        $cashierDailyPerformance = collect();
+
+        if ($isAdminRole) {
+            $cashierRows = (clone $baseQuery)
+                ->selectRaw('user_id, COUNT(*) as transactions, SUM(total) as total_sales, AVG(total) as avg_transaction, MIN(created_at) as first_sale_at, MAX(created_at) as last_sale_at')
+                ->whereNotNull('user_id')
+                ->groupBy('user_id')
+                ->orderByDesc('total_sales')
+                ->get();
+
+            $cashierUserIds = $cashierRows->pluck('user_id')->filter()->unique()->values();
+            $cashierUsers = DB::table('users')
+                ->whereIn('id', $cashierUserIds)
+                ->select('id', 'name')
+                ->get()
+                ->keyBy('id');
+
+            $loginByUser = collect();
+            $loginByDayAndUser = collect();
+            if (Schema::hasTable('audit_logs')) {
+                $loginByUser = DB::table('audit_logs')
+                    ->where('company_id', $user->company_id)
+                    ->where('action', 'login')
+                    ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+                    ->whereIn('user_id', $cashierUserIds)
+                    ->groupBy('user_id')
+                    ->selectRaw('user_id, MIN(created_at) as first_login_at, MAX(created_at) as last_login_at, COUNT(*) as login_events')
+                    ->get()
+                    ->keyBy('user_id');
+
+                $loginByDayAndUser = DB::table('audit_logs')
+                    ->where('company_id', $user->company_id)
+                    ->where('action', 'login')
+                    ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+                    ->whereIn('user_id', $cashierUserIds)
+                    ->groupBy(DB::raw('DATE(created_at)'), 'user_id')
+                    ->selectRaw('DATE(created_at) as activity_date, user_id, MIN(created_at) as first_login_at, MAX(created_at) as last_login_at, COUNT(*) as login_events')
+                    ->get()
+                    ->keyBy(function ($row) {
+                        return $row->activity_date . '::' . $row->user_id;
+                    });
+            }
+
+            $cashierSummary = $cashierRows->map(function ($row) use ($cashierUsers, $loginByUser) {
+                $login = $loginByUser->get($row->user_id);
+
+                $activeStart = $login?->first_login_at ?: $row->first_sale_at;
+                $activeEnd = $row->last_sale_at;
+                $activeMinutes = 0;
+                if ($activeStart && $activeEnd) {
+                    $activeMinutes = max(0, Carbon::parse($activeStart)->diffInMinutes(Carbon::parse($activeEnd), false));
+                }
+
+                return [
+                    'user_id' => (int) $row->user_id,
+                    'cashier_name' => $cashierUsers[$row->user_id]->name ?? ('User #' . $row->user_id),
+                    'transactions' => (int) $row->transactions,
+                    'total_sales' => round((float) $row->total_sales, 2),
+                    'avg_transaction' => round((float) $row->avg_transaction, 2),
+                    'first_login_at' => $login?->first_login_at,
+                    'first_sale_at' => $row->first_sale_at,
+                    'last_sale_at' => $row->last_sale_at,
+                    'active_minutes' => (int) $activeMinutes,
+                    'login_events' => (int) ($login?->login_events ?? 0),
+                ];
+            })->values();
+
+            $dailyRows = (clone $baseQuery)
+                ->selectRaw('DATE(created_at) as activity_date, user_id, COUNT(*) as transactions, SUM(total) as total_sales, AVG(total) as avg_transaction, MIN(created_at) as first_sale_at, MAX(created_at) as last_sale_at')
+                ->whereNotNull('user_id')
+                ->groupBy(DB::raw('DATE(created_at)'), 'user_id')
+                ->orderByDesc('activity_date')
+                ->orderByDesc('total_sales')
+                ->get();
+
+            $cashierDailyPerformance = $dailyRows->map(function ($row) use ($cashierUsers, $loginByDayAndUser) {
+                $key = $row->activity_date . '::' . $row->user_id;
+                $login = $loginByDayAndUser->get($key);
+
+                $activeStart = $login?->first_login_at ?: $row->first_sale_at;
+                $activeEnd = $row->last_sale_at;
+                $activeMinutes = 0;
+                if ($activeStart && $activeEnd) {
+                    $activeMinutes = max(0, Carbon::parse($activeStart)->diffInMinutes(Carbon::parse($activeEnd), false));
+                }
+
+                return [
+                    'activity_date' => $row->activity_date,
+                    'user_id' => (int) $row->user_id,
+                    'cashier_name' => $cashierUsers[$row->user_id]->name ?? ('User #' . $row->user_id),
+                    'transactions' => (int) $row->transactions,
+                    'total_sales' => round((float) $row->total_sales, 2),
+                    'avg_transaction' => round((float) $row->avg_transaction, 2),
+                    'first_login_at' => $login?->first_login_at,
+                    'first_sale_at' => $row->first_sale_at,
+                    'last_sale_at' => $row->last_sale_at,
+                    'active_minutes' => (int) $activeMinutes,
+                    'login_events' => (int) ($login?->login_events ?? 0),
+                ];
+            })->values();
+        }
 
         $response = [
+            'scope' => $isCashierRole ? 'personal' : 'company',
+            'role' => $roleName,
             'total_revenue' => round($totalRevenue, 2),
             'total_discount' => round($totalDiscount, 2),
             'total_tax' => round($totalTax, 2),
@@ -196,11 +290,21 @@ class ReportController extends Controller
             'avg_transaction' => round($avgTransaction, 2),
             'total_items' => $totalItems,
             'transactions' => $transactions,
+            'cashier_summary' => $cashierSummary,
+            'cashier_daily_performance' => $cashierDailyPerformance,
+            'pagination' => [
+                'current_page' => $transactionsPage->currentPage(),
+                'per_page' => $transactionsPage->perPage(),
+                'last_page' => $transactionsPage->lastPage(),
+                'total' => $transactionsPage->total(),
+            ],
         ];
 
-        Log::info('✅ Sales Report Response Ready', [
-            'response_keys' => array_keys($response),
-            'transaction_count' => count($transactions),
+        Log::info('Sales Report Response Ready', [
+            'company_id' => $user->company_id,
+            'total_transactions' => $totalTransactions,
+            'page_transactions' => $transactions->count(),
+            'per_page' => $perPage,
         ]);
 
         return response()->json($response);
@@ -219,18 +323,21 @@ class ReportController extends Controller
 
         $startDate = $request->input('start_date', Carbon::now()->subDays(30)->toDateString());
         $endDate = $request->input('end_date', Carbon::now()->toDateString());
+        $perPage = max(10, min((int) $request->input('per_page', 50), 200));
 
-        $transfers = \App\Models\WarehouseTransfer::where('company_id', $user->company_id)
-            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+        $baseQuery = \App\Models\WarehouseTransfer::where('company_id', $user->company_id)
+            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+
+        $totalCount = (int) (clone $baseQuery)->count();
+        $itemsIn = (int) (clone $baseQuery)->where('transfer_type', 'in')->sum('quantity');
+        $itemsOut = (int) (clone $baseQuery)->where('transfer_type', 'out')->sum('quantity');
+
+        $page = (clone $baseQuery)
             ->with(['product', 'fromWarehouse', 'toWarehouse'])
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
 
-        $totalCount = $transfers->count();
-        $itemsIn = $transfers->where('transfer_type', 'in')->sum('quantity');
-        $itemsOut = $transfers->where('transfer_type', 'out')->sum('quantity');
-
-        $list = $transfers->map(function ($transfer) {
+        $list = $page->getCollection()->map(function ($transfer) {
             return [
                 'id' => $transfer->id,
                 'from_location' => $transfer->fromWarehouse ? $transfer->fromWarehouse->name : $transfer->external_target,
@@ -238,13 +345,19 @@ class ReportController extends Controller
                 'items_count' => $transfer->quantity,
                 'created_at' => $transfer->created_at->toISOString(),
             ];
-        });
+        })->values();
 
         return response()->json([
             'total_count' => $totalCount,
             'items_in' => $itemsIn,
             'items_out' => $itemsOut,
             'list' => $list,
+            'pagination' => [
+                'current_page' => $page->currentPage(),
+                'per_page' => $page->perPage(),
+                'last_page' => $page->lastPage(),
+                'total' => $page->total(),
+            ],
         ]);
     }
 

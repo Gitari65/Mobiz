@@ -38,7 +38,7 @@
               <span v-if="!sidebarCollapsed" class="nav-text">Dashboard</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('sales')">
             <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')" :title="sidebarCollapsed ? 'POS Sales' : ''">
               <i class="fas fa-cash-register nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">POS Sales</span>
@@ -66,55 +66,67 @@
               <span v-if="!sidebarCollapsed" class="nav-text">Dashboard</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('sales')">
             <router-link to="/sales" class="nav-link" @click="setActiveItem('sales')" :title="sidebarCollapsed ? 'POS Sales' : ''">
               <i class="fas fa-cash-register nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">POS Sales</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('inventory') || canAccess('products')">
             <router-link to="/products" class="nav-link" @click="setActiveItem('products')" :title="sidebarCollapsed ? 'Products' : ''">
               <i class="fas fa-box nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Products</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('inventory')">
             <router-link to="/inventory" class="nav-link" @click="setActiveItem('inventory')" :title="sidebarCollapsed ? 'Inventory' : ''">
               <i class="fas fa-warehouse nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Inventory</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('reports')">
             <router-link to="/reports" class="nav-link" @click="setActiveItem('reports')" :title="sidebarCollapsed ? 'Reports' : ''">
               <i class="fas fa-chart-bar nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Reports</span>
             </router-link>
           </li>
           <li class="nav-item">
+            <router-link to="/admin/audit-logs" class="nav-link" @click="setActiveItem('admin-audit-logs')" :title="sidebarCollapsed ? 'Audit Logs' : ''">
+              <i class="fas fa-clipboard-list nav-icon"></i>
+              <span v-if="!sidebarCollapsed" class="nav-text">Audit Logs</span>
+            </router-link>
+          </li>
+          <li class="nav-item" v-if="canAccess('expenses')">
             <router-link to="/expenses" class="nav-link" @click="setActiveItem('expenses')" :title="sidebarCollapsed ? 'Expenses' : ''">
               <i class="fas fa-receipt nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Expenses</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('promotions')">
             <router-link to="/promotions" class="nav-link" @click="setActiveItem('promotions')" :title="sidebarCollapsed ? 'Promotions' : ''">
               <i class="fas fa-tags nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Promotions</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('sms')">
+            <router-link to="/messaging" class="nav-link" @click="setActiveItem('messaging')" :title="sidebarCollapsed ? 'Messaging' : ''">
+              <i class="fas fa-envelope nav-icon"></i>
+              <span v-if="!sidebarCollapsed" class="nav-text">Messaging</span>
+            </router-link>
+          </li>
+          <li class="nav-item" v-if="canAccess('accounts')">
             <router-link to="/accounts" class="nav-link" @click="setActiveItem('accounts')" :title="sidebarCollapsed ? 'Accounts' : ''">
               <i class="fas fa-money-bill-wave nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Accounts</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('admin_customization')">
             <router-link to="/admin-customization" class="nav-link" @click="setActiveItem('admin-customization')" :title="sidebarCollapsed ? 'Admin Customization' : ''">
               <i class="fas fa-cogs nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Admin Customization</span>
             </router-link>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" v-if="canAccess('user_management')">
             <router-link to="/users" class="nav-link" @click="setActiveItem('users')" :title="sidebarCollapsed ? 'Manage Users' : ''">
               <i class="fas fa-users nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Manage Users</span>
@@ -164,6 +176,13 @@
             <router-link to="/superuser/audit-logs" class="nav-link" @click="setActiveItem('superuser-audit')" :title="sidebarCollapsed ? 'Audit Logs' : ''">
               <i class="fas fa-clipboard-list nav-icon"></i>
               <span v-if="!sidebarCollapsed" class="nav-text">Audit Logs</span>
+            </router-link>
+          </li>
+
+          <li class="nav-item">
+            <router-link to="/superuser/diagnostics" class="nav-link" @click="setActiveItem('superuser-diagnostics')" :title="sidebarCollapsed ? 'Diagnostics' : ''">
+              <i class="fas fa-tachometer-alt nav-icon"></i>
+              <span v-if="!sidebarCollapsed" class="nav-text">Diagnostics</span>
             </router-link>
           </li>
 
@@ -277,6 +296,69 @@ const unreadCount = ref(0)
 const showChatModal = ref(false)
 const chatRefreshInterval = ref(null)
 const sidebarCollapsed = ref(false)
+const companySubscription = ref(null)
+const companyFeatures = ref([])
+const featuresLoaded = ref(false)
+const SUBSCRIPTION_FEATURE_CACHE_KEY = 'companySubscriptionFeaturesCache'
+const getAuthToken = () => localStorage.getItem('authToken') || localStorage.getItem('token') || ''
+
+const normalizeFeature = (feature) => String(feature || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[\s-]+/g, '_')
+
+const extractFeatureKeys = (rawFeatures = []) => {
+  if (!rawFeatures) return []
+
+  if (typeof rawFeatures === 'object' && !Array.isArray(rawFeatures)) {
+    return Object.entries(rawFeatures)
+      .filter(([, isEnabled]) => Boolean(isEnabled))
+      .map(([key]) => normalizeFeature(key))
+      .filter(Boolean)
+  }
+
+  if (!Array.isArray(rawFeatures)) return []
+
+  return rawFeatures
+    .flatMap((feature) => {
+      if (typeof feature === 'string') return [feature]
+      if (!feature || typeof feature !== 'object') return []
+
+      return [
+        feature.slug,
+        feature.key,
+        feature.code,
+        feature.name,
+        feature.feature,
+        feature.id,
+      ].filter(Boolean)
+    })
+    .map(normalizeFeature)
+    .filter(Boolean)
+}
+
+const writeFeatureCache = (features = []) => {
+  const normalized = extractFeatureKeys(features)
+  localStorage.setItem(SUBSCRIPTION_FEATURE_CACHE_KEY, JSON.stringify({
+    ts: Date.now(),
+    token: getAuthToken(),
+    features: normalized,
+  }))
+}
+
+const readFeatureCache = ({ allowStale = true } = {}) => {
+  try {
+    const raw = localStorage.getItem(SUBSCRIPTION_FEATURE_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.ts || !Array.isArray(parsed.features)) return null
+    if ((parsed.token || '') !== getAuthToken()) return null
+    if (!allowStale && Date.now() - parsed.ts > 60 * 1000) return null
+    return parsed.features
+  } catch (_e) {
+    return null
+  }
+}
 
 // Load collapsed state from localStorage
 onMounted(() => {
@@ -301,6 +383,37 @@ const userRoleLabel = computed(() => {
   if (userRole.value === 'user') return 'User'
   return userRole.value ? userRole.value.charAt(0).toUpperCase() + userRole.value.slice(1) : ''
 })
+
+const featureAliases = {
+  sales: ['sales', 'pos_sales', 'point_of_sale'],
+  products: ['products', 'product_management', 'catalog'],
+  inventory: ['inventory', 'stock', 'stock_management'],
+  reports: ['reports', 'analytics', 'reporting'],
+  expenses: ['expenses', 'expense_tracking', 'finance'],
+  promotions: ['promotions', 'marketing', 'discounts'],
+  accounts: ['accounts', 'accounting', 'ledger'],
+  admin_customization: ['admin_customization', 'customization', 'settings_admin'],
+  user_management: ['user_management', 'users', 'staff_management', 'team_management'],
+}
+
+const hasFeature = (featureKey) => {
+  const normalized = normalizeFeature(featureKey)
+  const allowed = new Set(companyFeatures.value)
+  if (allowed.has('*') || allowed.has('all')) return true
+  const candidates = featureAliases[normalized] || [normalized]
+  return candidates.some((candidate) => allowed.has(candidate))
+}
+
+const canAccess = (featureKey) => {
+  if (isSuperUser.value) return true
+  if (!isAdmin.value && !isCashier.value) return true
+  if (featureKey === 'sales' || featureKey === 'dashboard') return true
+  // Always allow admins to access foundational features
+  if (isAdmin.value && (featureKey === 'products' || featureKey === 'inventory' || featureKey === 'reports')) return true
+  if (!featureKey) return true
+  if (!featuresLoaded.value) return true
+  return hasFeature(featureKey)
+}
 
 // --- METHODS ---
 const showAlert = (type, message, duration = 3000) => {
@@ -398,9 +511,32 @@ const onChatMessageSent = () => {
   loadUnreadCount()
 }
 
+const loadCompanySubscriptionFeatures = async () => {
+  if (isSuperUser.value || (!isAdmin.value && !isCashier.value)) {
+    featuresLoaded.value = true
+    return
+  }
+
+  try {
+    const res = await axios.get('/api/company/subscription')
+    const subscription = res.data?.subscription || null
+    companySubscription.value = subscription
+    const features = Array.isArray(subscription?.features) ? subscription.features : []
+    companyFeatures.value = extractFeatureKeys(features)
+    writeFeatureCache(companyFeatures.value)
+  } catch (_e) {
+    const cached = readFeatureCache({ allowStale: true })
+    companySubscription.value = null
+    companyFeatures.value = Array.isArray(cached) ? cached : []
+  } finally {
+    featuresLoaded.value = true
+  }
+}
+
 // --- LIFECYCLE ---
-onMounted(() => {
+onMounted(async () => {
   initializeUserRole()
+  await loadCompanySubscriptionFeatures()
   loadUnreadCount()
   chatRefreshInterval.value = setInterval(loadUnreadCount, 10000)
   
@@ -408,6 +544,7 @@ onMounted(() => {
   if (path.includes('/sales')) activeItem.value = 'sales'
   else if (path.includes('/products')) activeItem.value = 'products'
   else if (path.includes('/inventory')) activeItem.value = 'inventory'
+  else if (path.includes('/admin/audit-logs')) activeItem.value = 'admin-audit-logs'
   else if (path.includes('/reports')) activeItem.value = 'reports'
   else activeItem.value = 'dashboard'
 })

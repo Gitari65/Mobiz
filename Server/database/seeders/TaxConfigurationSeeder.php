@@ -5,20 +5,34 @@ namespace Database\Seeders;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\TaxConfiguration;
+use App\Models\Company;
 use Illuminate\Support\Facades\DB;
 
 class TaxConfigurationSeeder extends Seeder
 {
     public function run(): void
     {
-        // Ensure no company-specific defaults are set
-        DB::table('tax_configurations')->update(['is_default' => false]);
+        // Clean up ALL old tax configs (reset for fresh multi-tenant setup)
+        // Always delete NULL company_id entries
+        TaxConfiguration::whereNull('company_id')->delete();
 
-        // Create a single global set if not exists
-        if (TaxConfiguration::whereNull('company_id')->count() === 0) {
-            // Standard VAT - 16% (Default) - Global System Default
-            TaxConfiguration::create([
-                'company_id' => null,
+        // Get the first company (system assumes at least one exists at startup)
+        $company = Company::first();
+        
+        if (!$company) {
+            $this->command->info('No company found. Skipping tax configuration seeding.');
+            return;
+        }
+
+        $companyId = $company->id;
+
+        // Delete existing configs for this company to ensure fresh state
+        TaxConfiguration::where('company_id', $companyId)->delete();
+        $this->command->info('Cleared existing tax configurations for company: ' . $company->name);
+
+        // Create Kenya tax defaults for this company
+        $taxes = [
+            [
                 'name' => 'Standard VAT',
                 'tax_type' => 'VAT',
                 'rate' => 16.00,
@@ -27,11 +41,8 @@ class TaxConfigurationSeeder extends Seeder
                 'is_active' => true,
                 'is_system_default' => true,
                 'description' => 'Kenya standard VAT rate - 16% added to sale prices',
-            ]);
-
-            // Zero-Rated - Global System Default
-            TaxConfiguration::create([
-                'company_id' => null,
+            ],
+            [
                 'name' => 'Zero-Rated',
                 'tax_type' => 'VAT',
                 'rate' => 0.00,
@@ -40,11 +51,8 @@ class TaxConfigurationSeeder extends Seeder
                 'is_active' => true,
                 'is_system_default' => true,
                 'description' => 'Zero-rated items (exports, agricultural products, medical supplies)',
-            ]);
-
-            // Exempt - Global System Default
-            TaxConfiguration::create([
-                'company_id' => null,
+            ],
+            [
                 'name' => 'Exempt',
                 'tax_type' => 'VAT',
                 'rate' => 0.00,
@@ -53,7 +61,13 @@ class TaxConfigurationSeeder extends Seeder
                 'is_active' => true,
                 'is_system_default' => true,
                 'description' => 'Exempt items (financial services, education, residential rent)',
-            ]);
+            ],
+        ];
+
+        foreach ($taxes as $tax) {
+            TaxConfiguration::create(array_merge($tax, ['company_id' => $companyId]));
         }
+
+        $this->command->info('Tax configurations seeded for company: ' . $company->name);
     }
 }

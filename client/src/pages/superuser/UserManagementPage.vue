@@ -423,6 +423,91 @@
       </div>
     </div>
 
+    <!-- Action Confirmation Modal -->
+    <div v-if="confirmation.active" class="modal-overlay">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h2>
+            <i v-if="confirmation.type === 'activate'" class="fas fa-check-circle" style="color: #10b981;"></i>
+            <i v-else-if="confirmation.type === 'deactivate'" class="fas fa-ban" style="color: #ef4444;"></i>
+            <i v-else-if="confirmation.type === 'reset-password'" class="fas fa-key" style="color: #f59e0b;"></i>
+            <i v-else-if="confirmation.type === 'reset-otp'" class="fas fa-shield-alt" style="color: #667eea;"></i>
+            Confirm Action
+          </h2>
+          <button @click="closeConfirmation" class="btn-close" :disabled="confirmation.inProgress">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <p v-if="confirmation.type === 'activate'">
+            Activate <strong>{{ confirmation.user?.name }}</strong>?
+            <br /><span class="text-muted">This user will be able to log in and access the system.</span>
+          </p>
+          <p v-else-if="confirmation.type === 'deactivate'">
+            Deactivate <strong>{{ confirmation.user?.name }}</strong>?
+            <br /><span class="text-muted">This user will no longer be able to log in. A deactivation email will be sent.</span>
+          </p>
+          <p v-else-if="confirmation.type === 'reset-password'">
+            Send password reset to <strong>{{ confirmation.user?.email }}</strong>?
+            <br /><span class="text-muted">The user will receive a temporary password and must change it on next login.</span>
+          </p>
+          <p v-else-if="confirmation.type === 'reset-otp'">
+            Reset OTP limit for <strong>{{ confirmation.user?.name }}</strong>?
+            <br /><span class="text-muted">This will reset their password reset attempts to allow new OTP requests.</span>
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button 
+            v-if="confirmation.type === 'activate'"
+            @click="executeActivate" 
+            class="btn-success" 
+            :disabled="confirmation.inProgress"
+          >
+            <span v-if="confirmation.inProgress" class="btn-spinner"></span>
+            {{ confirmation.inProgress ? 'Activating...' : 'Activate' }}
+          </button>
+          <button 
+            v-else-if="confirmation.type === 'deactivate'"
+            @click="executeDeactivate" 
+            class="btn-danger" 
+            :disabled="confirmation.inProgress"
+          >
+            <span v-if="confirmation.inProgress" class="btn-spinner"></span>
+            {{ confirmation.inProgress ? 'Deactivating...' : 'Deactivate' }}
+          </button>
+          <button 
+            v-else-if="confirmation.type === 'reset-password'"
+            @click="executeResetPassword" 
+            class="btn-warning" 
+            :disabled="confirmation.inProgress"
+          >
+            <span v-if="confirmation.inProgress" class="btn-spinner"></span>
+            {{ confirmation.inProgress ? 'Sending...' : 'Send Reset' }}
+          </button>
+          <button 
+            v-else-if="confirmation.type === 'reset-otp'"
+            @click="executeResetOtp" 
+            class="btn-info" 
+            :disabled="confirmation.inProgress"
+          >
+            <span v-if="confirmation.inProgress" class="btn-spinner"></span>
+            {{ confirmation.inProgress ? 'Resetting...' : 'Reset OTP' }}
+          </button>
+
+          <button 
+            type="button" 
+            @click="closeConfirmation" 
+            class="btn-secondary" 
+            :disabled="confirmation.inProgress"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Alert Toast -->
     <div v-if="alert.show" class="alert-toast" :class="`alert-${alert.type}`">
       <i :class="getAlertIcon(alert.type)"></i>
@@ -584,6 +669,13 @@ const showOtpModal = reactive({
   active: false,
   user: null,
   isResetting: false
+})
+
+const confirmation = reactive({
+  active: false,
+  type: '', // 'activate', 'deactivate', 'reset-password', 'reset-otp'
+  user: null,
+  inProgress: false
 })
 
 const saving = ref(false)
@@ -970,30 +1062,60 @@ async function saveUser() {
 }
 
 async function toggleUserStatus(user) {
+  confirmation.type = user.verified ? 'deactivate' : 'activate'
+  confirmation.user = { ...user }
+  confirmation.active = true
+}
+
+async function executeActivate() {
+  if (!confirmation.user?.id) return
+  confirmation.inProgress = true
   try {
-    const endpoint = user.verified ? 'deactivate' : 'activate'
-    await axios.patch(`/api/super/users/${user.id}/${endpoint}`)
-    showAlert('success', `User ${endpoint}d successfully`)
+    await axios.patch(`/api/super/users/${confirmation.user.id}/activate`)
+    showAlert('success', `User activated successfully`)
+    closeConfirmation()
     fetchUsers()
   } catch (e) {
-    showAlert('error', `Failed to ${user.verified ? 'deactivate' : 'activate'} user`)
+    showAlert('error', `Failed to activate user`)
+  } finally {
+    confirmation.inProgress = false
+  }
+}
+
+async function executeDeactivate() {
+  if (!confirmation.user?.id) return
+  confirmation.inProgress = true
+  try {
+    await axios.patch(`/api/super/users/${confirmation.user.id}/deactivate`)
+    showAlert('success', `User deactivated successfully`)
+    closeConfirmation()
+    fetchUsers()
+  } catch (e) {
+    showAlert('error', `Failed to deactivate user`)
+  } finally {
+    confirmation.inProgress = false
   }
 }
 
 async function resetUserPassword(user) {
-  const confirmed = confirm(`Send a new temporary password to ${user.email}? This will email them a reset password and require a change on next login.`)
-  if (!confirmed) return
+  confirmation.type = 'reset-password'
+  confirmation.user = { ...user }
+  confirmation.active = true
+}
 
+async function executeResetPassword() {
+  if (!confirmation.user?.id) return
+  confirmation.inProgress = true
   try {
     passwordResetProgress.active = true
-    passwordResetProgress.user = { name: user.name, email: user.email }
+    passwordResetProgress.user = { name: confirmation.user.name, email: confirmation.user.email }
     passwordResetProgress.percentage = 25
     passwordResetProgress.message = 'Preparing reset...'
     await new Promise(resolve => setTimeout(resolve, 300))
 
     passwordResetProgress.percentage = 55
     passwordResetProgress.message = 'Generating new temporary password...'
-    await axios.post(`/api/super/users/${user.id}/reset-password`)
+    await axios.post(`/api/super/users/${confirmation.user.id}/reset-password`)
 
     passwordResetProgress.percentage = 85
     passwordResetProgress.message = 'Sending email to user...'
@@ -1001,11 +1123,13 @@ async function resetUserPassword(user) {
 
     passwordResetProgress.percentage = 100
     passwordResetProgress.message = 'Email sent successfully'
-    showAlert('success', `Reset email sent to ${user.email}. User will need to change password on next login.`)
+    showAlert('success', `Reset email sent to ${confirmation.user.email}. User will need to change password on next login.`)
+    closeConfirmation()
   } catch (e) {
     const msg = e.response?.data?.message || 'Failed to reset password'
     showAlert('error', msg)
   } finally {
+    confirmation.inProgress = false
     setTimeout(() => {
       passwordResetProgress.active = false
       passwordResetProgress.percentage = 0
@@ -1025,15 +1149,28 @@ function closeOtpModal() {
   showOtpModal.isResetting = false
 }
 
+function closeConfirmation() {
+  confirmation.active = false
+  confirmation.type = ''
+  confirmation.user = null
+  confirmation.inProgress = false
+}
+
 async function resetOtpLimit() {
-  if (!showOtpModal.user?.id) return
+  confirmation.type = 'reset-otp'
+  confirmation.user = { ...showOtpModal.user }
+  confirmation.active = true
+}
+
+async function executeResetOtp() {
+  if (!confirmation.user?.id) return
+  confirmation.inProgress = true
 
   try {
-    showOtpModal.isResetting = true
     const token = localStorage.getItem('authToken')
     
     const res = await axios.post(
-      `/reset-otp-limit/${showOtpModal.user.id}`,
+      `/reset-otp-limit/${confirmation.user.id}`,
       {},
       {
         headers: {
@@ -1043,22 +1180,22 @@ async function resetOtpLimit() {
       }
     )
 
-    showAlert('success', `OTP limit reset for ${showOtpModal.user.name}`)
+    showAlert('success', `OTP limit reset for ${confirmation.user.name}`)
     
-    // Update the modal user data
-    showOtpModal.user.otp_resend_count = 0
-    showOtpModal.user.last_otp_request_at = null
+    // Update the modal user data if it's in the OTP modal
+    if (showOtpModal.user?.id === confirmation.user.id) {
+      showOtpModal.user.otp_resend_count = 0
+      showOtpModal.user.last_otp_request_at = null
+    }
     
     // Refresh users list
     fetchUsers()
     
-    setTimeout(() => {
-      closeOtpModal()
-    }, 1500)
+    closeConfirmation()
   } catch (e) {
     showAlert('error', e.response?.data?.error || 'Failed to reset OTP limit')
   } finally {
-    showOtpModal.isResetting = false
+    confirmation.inProgress = false
   }
 }
 onMounted(() => {
@@ -1511,6 +1648,79 @@ watch(activeTab, (newTab) => {
 
 .btn-secondary:hover:not(:disabled) {
   background: #e5e7eb;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-success:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-warning:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
+}
+
+.btn-info {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-info:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+}
+
+.btn-danger:disabled,
+.btn-success:disabled,
+.btn-warning:disabled,
+.btn-info:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-close {

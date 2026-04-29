@@ -9,6 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         Schema::table('warehouse_transfers', function (Blueprint $table) {
             // Remove existing foreign to allow nullability change
             try {
@@ -52,6 +56,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         Schema::table('warehouse_transfers', function (Blueprint $table) {
             try {
                 $table->dropForeign(['company_id']);

@@ -11,7 +11,10 @@ class ModelActivityObserver
     protected function record(Model $model, string $action)
     {
         $user = Auth::user();
+        $companyId = $model->company_id ?? $user?->company_id ?? null;
+
         AuditLog::create([
+            'company_id' => $companyId,
             'action' => $action,
             'auditable_type' => get_class($model),
             'auditable_id' => $model->getKey(),

@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail; // <-- ADDED
 use App\Mail\PasswordResetNotification; // <-- ADDED
 use App\Mail\WelcomeOneTimePassword; // reuse existing mailable
+use App\Mail\AccountDeactivated; // <-- ADDED
+use App\Mail\AccountActivated; // <-- ADDED
 use Illuminate\Validation\Rule;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 class UserController extends Controller
@@ -151,9 +153,24 @@ class UserController extends Controller
     {
         $this->authorize('activate', User::class);
         $user = User::findOrFail($id);
+        
+        // Generate a temporary password for the user
+        $temporaryPassword = \Illuminate\Support\Str::random(12);
+        
+        // Hash and save the password
+        $user->password = Hash::make($temporaryPassword);
         $user->verified = true;
         $user->save();
         Log::info('SuperUser activated user', ['by'=>auth()->user()->id, 'user_id'=>$user->id]);
+
+        // Send account activation email to the user with temporary password
+        try {
+            Mail::to($user->email)->send(new AccountActivated($user, $temporaryPassword));
+            Log::info('Account activation email sent', ['user_id' => $user->id]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send account activation email', ['error'=>$e->getMessage(),'user_id'=>$user->id]);
+        }
+
         return response()->json(['message'=>'Activated']);
     }
 
@@ -164,6 +181,15 @@ class UserController extends Controller
         $user->verified = false;
         $user->save();
         Log::info('SuperUser deactivated user', ['by'=>auth()->user()->id, 'user_id'=>$user->id]);
+
+        // Send account deactivation email to the user
+        try {
+            Mail::to($user->email)->send(new AccountDeactivated($user));
+            Log::info('Account deactivation email sent', ['user_id' => $user->id]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to send account deactivation email', ['error'=>$e->getMessage(),'user_id'=>$user->id]);
+        }
+
         return response()->json(['message'=>'Deactivated']);
     }
 

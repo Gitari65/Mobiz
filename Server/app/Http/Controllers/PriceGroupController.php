@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\PriceGroup;
+use App\Services\PriceGroupService;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class PriceGroupController extends Controller
 {
@@ -14,11 +16,15 @@ class PriceGroupController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        
-        // Get system price groups and company-specific ones
-        $priceGroups = PriceGroup::where(function ($query) use ($user) {
-            $query->whereNull('company_id')
-                  ->orWhere('company_id', $user->company_id);
+
+        PriceGroupService::ensureDefaultsForCompany($user->company_id);
+
+        $includeDisabled = $request->boolean('include_disabled', false);
+        $hasIsEnabledColumn = PriceGroupService::hasIsEnabledColumn();
+
+        $priceGroups = PriceGroup::where('company_id', $user->company_id)
+        ->when($hasIsEnabledColumn && !$includeDisabled, function ($query) {
+            $query->where('is_enabled', true);
         })
         ->orderBy('is_system', 'desc')
         ->orderBy('name')
@@ -34,11 +40,20 @@ class PriceGroupController extends Controller
     {
         $user = $request->user();
 
+        PriceGroupService::ensureDefaultsForCompany($user->company_id);
+        $hasIsEnabledColumn = PriceGroupService::hasIsEnabledColumn();
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'code' => 'required|string|max:50|unique:price_groups,code',
+            'code' => [
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('price_groups', 'code')->where(fn ($query) => $query->where('company_id', $user->company_id)),
+            ],
             'description' => 'nullable|string',
-            'discount_percentage' => 'required|numeric|min:0|max:100'
+            'discount_percentage' => 'required|numeric|min:0|max:100',
+            'is_enabled' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -54,6 +69,12 @@ class PriceGroupController extends Controller
             'company_id' => $user->company_id
         ]);
 
+        if ($hasIsEnabledColumn) {
+            $priceGroup->update([
+                'is_enabled' => $request->boolean('is_enabled', true),
+            ]);
+        }
+
         return response()->json([
             'message' => 'Price group created successfully',
             'data' => $priceGroup
@@ -65,7 +86,10 @@ class PriceGroupController extends Controller
      */
     public function show($id)
     {
-        $priceGroup = PriceGroup::with('customers')->findOrFail($id);
+        $user = request()->user();
+        $priceGroup = PriceGroup::where('company_id', $user->company_id)
+            ->with('customers')
+            ->findOrFail($id);
         return response()->json($priceGroup);
     }
 
@@ -75,39 +99,60 @@ class PriceGroupController extends Controller
     public function update(Request $request, $id)
     {
         $user = $request->user();
-        $priceGroup = PriceGroup::findOrFail($id);
+        PriceGroupService::ensureDefaultsForCompany($user->company_id);
+        $hasIsEnabledColumn = PriceGroupService::hasIsEnabledColumn();
+        $priceGroup = PriceGroup::where('company_id', $user->company_id)->findOrFail($id);
 
-        // Prevent editing system price groups
-        if ($priceGroup->is_system) {
+        $nextCode = strtoupper((string) $request->code);
+
+        if ($priceGroup->is_system && $priceGroup->code !== $nextCode) {
             return response()->json([
-                'message' => 'Cannot edit system price groups'
-            ], 403);
+                'message' => 'Default pricing group codes cannot be changed'
+            ], 422);
         }
 
-        // Check if user owns this price group
-        if ($priceGroup->company_id !== $user->company_id) {
+        if (
+            $hasIsEnabledColumn
+            && PriceGroupService::isRetailDefault($priceGroup)
+            && $request->has('is_enabled')
+            && !$request->boolean('is_enabled')
+        ) {
             return response()->json([
-                'message' => 'Unauthorized'
-            ], 403);
+                'message' => 'Retail Default pricing group must always remain enabled'
+            ], 422);
         }
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
-            'code' => 'required|string|max:50|unique:price_groups,code,' . $id,
+            'code' => [
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('price_groups', 'code')
+                    ->ignore($id)
+                    ->where(fn ($query) => $query->where('company_id', $user->company_id)),
+            ],
             'description' => 'nullable|string',
-            'discount_percentage' => 'required|numeric|min:0|max:100'
+            'discount_percentage' => 'required|numeric|min:0|max:100',
+            'is_enabled' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $priceGroup->update([
+        $updateData = [
             'name' => $request->name,
-            'code' => strtoupper($request->code),
+            'code' => $nextCode,
             'description' => $request->description,
-            'discount_percentage' => $request->discount_percentage
-        ]);
+            'discount_percentage' => $request->discount_percentage,
+        ];
+
+        if ($hasIsEnabledColumn) {
+            $updateData['is_enabled'] = $request->boolean('is_enabled', (bool) $priceGroup->is_enabled);
+        }
+
+        $priceGroup->update($updateData);
 
         return response()->json([
             'message' => 'Price group updated successfully',
@@ -120,12 +165,12 @@ class PriceGroupController extends Controller
      */
     public function destroy($id)
     {
-        $priceGroup = PriceGroup::findOrFail($id);
+        $user = request()->user();
+        $priceGroup = PriceGroup::where('company_id', $user->company_id)->findOrFail($id);
 
-        // Prevent deleting system price groups
         if ($priceGroup->is_system) {
             return response()->json([
-                'message' => 'Cannot delete system price groups'
+                'message' => 'Default pricing groups cannot be deleted. Disable them instead.'
             ], 403);
         }
 
@@ -140,6 +185,35 @@ class PriceGroupController extends Controller
 
         return response()->json([
             'message' => 'Price group deleted successfully'
+        ]);
+    }
+
+    public function toggle(Request $request, $id)
+    {
+        $user = $request->user();
+        PriceGroupService::ensureDefaultsForCompany($user->company_id);
+
+        if (!PriceGroupService::hasIsEnabledColumn()) {
+            return response()->json([
+                'message' => 'Pricing group toggles require the latest database migration. Please run migrations and try again.'
+            ], 422);
+        }
+
+        $priceGroup = PriceGroup::where('company_id', $user->company_id)->findOrFail($id);
+
+        if (PriceGroupService::isRetailDefault($priceGroup) && $priceGroup->is_enabled) {
+            return response()->json([
+                'message' => 'Retail Default pricing group must always remain enabled'
+            ], 422);
+        }
+
+        $priceGroup->update([
+            'is_enabled' => !$priceGroup->is_enabled,
+        ]);
+
+        return response()->json([
+            'message' => $priceGroup->is_enabled ? 'Pricing group enabled successfully' : 'Pricing group disabled successfully',
+            'data' => $priceGroup,
         ]);
     }
 }

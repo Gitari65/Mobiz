@@ -15,12 +15,14 @@ class ProductCategoryController extends Controller
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
+        // Get root categories with their children
         $categories = ProductCategory::where(function($query) use ($user) {
             $query->whereNull('company_id')
                   ->orWhere('company_id', $user->company_id);
         })
-        ->with(['creator', 'editor', 'company'])
-        ->orderBy('company_id', 'asc')
+        ->whereNull('parent_id') // Only root categories
+        ->with(['creator', 'editor', 'company', 'children'])
+        ->orderBy('display_order', 'asc')
         ->orderBy('name', 'asc')
         ->get();
 
@@ -45,6 +47,8 @@ class ProductCategoryController extends Controller
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:1000',
                 'icon' => 'nullable|string|max:100',
+                'parent_id' => 'nullable|exists:product_categories,id',
+                'display_order' => 'nullable|integer|min:0',
             ]);
 
             $validated['company_id'] = $user->company_id;
@@ -95,6 +99,8 @@ class ProductCategoryController extends Controller
                 'name' => 'sometimes|string|max:255',
                 'description' => 'sometimes|nullable|string|max:1000',
                 'icon' => 'sometimes|nullable|string|max:100',
+                'parent_id' => 'sometimes|nullable|exists:product_categories,id',
+                'display_order' => 'sometimes|nullable|integer|min:0',
             ]);
 
             $validated['updated_by'] = $user->id;
@@ -162,16 +168,17 @@ class ProductCategoryController extends Controller
             }
 
             $request->validate([
-                'file' => 'required|file|mimes:csv,txt|max:2048',
+                'csv_file' => 'required|file|mimes:csv,txt|max:2048',
             ]);
 
-            $file = $request->file('file');
+            $file = $request->file('csv_file');
             $csvData = array_map('str_getcsv', file($file->getRealPath()));
             $headers = array_shift($csvData);
 
             $created = 0;
             $skipped = 0;
             $errors = [];
+            $parentCache = [];
 
             foreach ($csvData as $row) {
                 if (count($row) < 1 || empty($row[0])) {
@@ -180,10 +187,24 @@ class ProductCategoryController extends Controller
                 }
 
                 try {
+                    $parentId = null;
+                    $parentName = $row[2] ?? null;
+                    
+                    // If parent category name is provided, find its ID
+                    if ($parentName) {
+                        if (!isset($parentCache[$parentName])) {
+                            $parent = ProductCategory::where('name', $parentName)
+                                ->where('company_id', $user->company_id)
+                                ->first();
+                            $parentCache[$parentName] = $parent ? $parent->id : null;
+                        }
+                        $parentId = $parentCache[$parentName];
+                    }
+
                     $categoryData = [
                         'name' => $row[0],
                         'description' => $row[1] ?? null,
-                        'icon' => $row[2] ?? null,
+                        'parent_id' => $parentId,
                         'company_id' => $user->company_id,
                         'created_by' => $user->id,
                         'updated_by' => $user->id,

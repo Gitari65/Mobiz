@@ -210,7 +210,14 @@
               <td>{{ customer.address || '-' }}</td>
               <td>{{ customer.tax_id || '-' }}</td>
               <td>
-                <span v-if="customer.price_group" class="badge">{{ customer.price_group.name }}</span>
+                <span
+                  v-if="customer.price_group"
+                  class="badge"
+                  :class="{ 'badge-disabled': customer.price_group.is_enabled === false }"
+                >
+                  {{ customer.price_group.name }}
+                  <template v-if="customer.price_group.is_enabled === false"> (Disabled)</template>
+                </span>
                 <span v-else class="text-muted">-</span>
               </td>
               <td>{{ customer.total_orders || 0 }}</td>
@@ -232,7 +239,7 @@
     </div>
 
     <!-- Create/Edit Modal -->
-    <div v-if="showCreateModal || showEditModal" class="modal-overlay" @click.self="closeModal">
+    <div v-if="showCreateModal || showEditModal" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
           <h2>{{ showEditModal ? 'Edit User' : 'Add New User' }}</h2>
@@ -251,8 +258,15 @@
               <input v-model="formData.email" type="email" required placeholder="user@example.com" />
             </div>
             <div v-if="!showEditModal" class="form-group">
+              <label>
+                <input type="checkbox" v-model="formData.autoGeneratePassword" />
+                Auto-generate temporary password (recommended)
+              </label>
+              <small class="form-hint">If checked, a secure temporary password will be generated and sent via email</small>
+            </div>
+            <div v-if="!showEditModal && !formData.autoGeneratePassword" class="form-group">
               <label>Password *</label>
-              <input v-model="formData.password" type="password" required placeholder="Min 6 characters" />
+              <input v-model="formData.password" type="password" placeholder="Min 6 characters" />
             </div>
             <div class="form-group">
               <label>Role *</label>
@@ -274,7 +288,7 @@
     </div>
 
     <!-- Add/Edit Supplier Modal -->
-    <div v-if="showAddSupplier || showEditSupplier" class="modal-overlay" @click.self="closeSupplierModal">
+    <div v-if="showAddSupplier || showEditSupplier" class="modal-overlay">
       <div class="modal modal-large">
         <div class="modal-header">
           <h2>{{ showEditSupplier ? 'Edit Supplier' : 'Add New Supplier' }}</h2>
@@ -328,7 +342,7 @@
     </div>
 
     <!-- Add/Edit Customer Modal -->
-    <div v-if="showAddCustomer || showEditCustomer" class="modal-overlay" @click.self="closeCustomerModal">
+    <div v-if="showAddCustomer || showEditCustomer" class="modal-overlay">
       <div class="modal modal-large">
         <div class="modal-header">
           <h2>{{ showEditCustomer ? 'Edit Customer' : 'Add New Customer' }}</h2>
@@ -363,10 +377,19 @@
                 <label>Price Group</label>
                 <select v-model="customerForm.price_group_id">
                   <option :value="null">Default Pricing</option>
-                  <option v-for="group in priceGroups" :key="group.id" :value="group.id">
+                  <option
+                    v-for="group in priceGroups"
+                    :key="group.id"
+                    :value="group.id"
+                    :disabled="group.is_enabled === false && Number(customerForm.price_group_id) !== Number(group.id)"
+                  >
                     {{ group.name }} ({{ group.discount_percentage }}% off)
+                    <template v-if="group.is_enabled === false"> - Disabled</template>
                   </option>
                 </select>
+                <small v-if="selectedCustomerPriceGroup && selectedCustomerPriceGroup.is_enabled === false" class="form-hint form-hint-warning">
+                  This customer is assigned to a disabled price group.
+                </small>
               </div>
             </div>
             <div class="form-group">
@@ -389,7 +412,7 @@
     </div>
 
     <!-- Batch Import Modal -->
-    <div v-if="showBatchImport" class="modal-overlay" @click.self="closeBatchModal">
+    <div v-if="showBatchImport" class="modal-overlay">
       <div class="modal modal-large">
         <div class="modal-header">
           <h2>Batch Import {{ batchType === 'supplier' ? 'Suppliers' : 'Customers' }}</h2>
@@ -613,6 +636,12 @@ const filteredCustomers = computed(() => {
   )
 })
 
+const selectedCustomerPriceGroup = computed(() => {
+  if (!customerForm.price_group_id) return null
+
+  return priceGroups.value.find(group => Number(group.id) === Number(customerForm.price_group_id)) || null
+})
+
 const formatRole = (role) => {
   if (!role) return 'Unknown'
   return role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
@@ -643,7 +672,7 @@ const editUser = (user) => {
 const closeModal = () => {
   showCreateModal.value = false
   showEditModal.value = false
-  Object.assign(formData, { name: '', email: '', password: '', role_id: '', id: null })
+  Object.assign(formData, { name: '', email: '', password: '', role_id: '', id: null, autoGeneratePassword: true })
 }
 
 const saveUser = async () => {
@@ -653,20 +682,57 @@ const saveUser = async () => {
       await axios.put(`/users/${formData.id}`, payload)
       showAlert('success', 'User updated successfully')
     } else {
+      let password = formData.password
+      if (formData.autoGeneratePassword) {
+        // Generate a secure temporary password
+        password = generateTemporaryPassword()
+      } else if (!password) {
+        showAlert('error', 'Password is required if not auto-generating')
+        return
+      }
+      
       const payload = {
         name: formData.name,
         email: formData.email,
-        password: formData.password,
+        password: password,
         role_id: formData.role_id
       }
       await axios.post('/users', payload)
-      showAlert('success', 'User created successfully')
+      if (formData.autoGeneratePassword) {
+        showAlert('success', `User created successfully. Temporary password has been sent to ${formData.email}`)
+      } else {
+        showAlert('success', 'User created successfully')
+      }
     }
     closeModal()
     fetchUsers()
   } catch (e) {
     showAlert('error', e.response?.data?.message || 'Failed to save user')
   }
+}
+
+const generateTemporaryPassword = () => {
+  const length = 12
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz'
+  const numbers = '0123456789'
+  const special = '!@#$%^&*'
+  const all = uppercase + lowercase + numbers + special
+  
+  let password = ''
+  // Ensure at least one of each type
+  password += uppercase[Math.floor(Math.random() * uppercase.length)]
+  password += lowercase[Math.floor(Math.random() * lowercase.length)]
+  password += numbers[Math.floor(Math.random() * numbers.length)]
+  password += special[Math.floor(Math.random() * special.length)]
+  
+  // Fill the rest randomly
+  for (let i = password.length; i < length; i++) {
+    password += all[Math.floor(Math.random() * all.length)]
+  }
+  
+  // Shuffle the password
+  return password.split('').sort(() => Math.random() - 0.5).join('')
 }
 
 const deleteUser = async (user) => {
@@ -1131,6 +1197,8 @@ onMounted(() => {
 .form-group label { font-weight: 600; color: #374151; }
 .form-group input, .form-group select, .form-group textarea { padding: 0.75rem; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 1rem; font-family: inherit; }
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+.form-hint { display: block; font-size: 0.8rem; color: #6b7280; }
+.form-hint-warning { color: #b45309; }
 .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; padding: 0.75rem 1.5rem; border-radius: 10px; cursor: pointer; font-weight: 600; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.5rem; }
 .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102,126,234,0.3); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -1176,6 +1244,7 @@ onMounted(() => {
 @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.875rem; font-weight: 600; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+.badge-disabled { background: linear-gradient(135deg, #f59e0b, #b45309); }
 .text-muted { color: #9ca3af; }
 
 @media (max-width: 768px) {

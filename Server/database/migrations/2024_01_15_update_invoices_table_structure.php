@@ -9,6 +9,12 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            // This migration relies on MySQL-specific INFORMATION_SCHEMA and alter FK behavior.
+            // Skip it for sqlite-based test runs.
+            return;
+        }
+
         if (Schema::hasTable('invoices')) {
             // Drop foreign key constraints first
             $this->dropForeignKeysIfExist();
@@ -61,6 +67,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         if (Schema::hasTable('invoices')) {
             $this->dropForeignKeysIfExist();
             
@@ -78,6 +88,10 @@ return new class extends Migration
 
     private function dropForeignKeysIfExist(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         $constraints = DB::select("
             SELECT CONSTRAINT_NAME 
             FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 

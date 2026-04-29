@@ -6,9 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Company;
 use App\Models\Role;
+use App\Models\Plan;
+use App\Models\Subscription;
+use App\Models\SubscriptionUpgradeRequest;
+use App\Models\AppNotification;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\CompanyRegistrationPending;
+use App\Mail\CompanyVerified;
+use App\Services\PriceGroupService;
+use App\Services\SubscriptionPlanService;
 
 class CompanyController extends Controller
 {
@@ -100,11 +110,6 @@ class CompanyController extends Controller
         if (! $user) {
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
-        $user->load('role');
-        $roleName = strtolower($user->role->name ?? '');
-        if (! in_array($roleName, ['admin', 'superuser'])) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
 
         if (! $user->company_id) {
             return response()->json(['subscription' => null]);
@@ -112,6 +117,9 @@ class CompanyController extends Controller
 
         $subscription = \App\Models\Subscription::with(['plan'])
             ->where('company_id', $user->company_id)
+            ->orderByRaw("CASE WHEN status = 'active' THEN 0 WHEN on_trial = 1 THEN 1 ELSE 2 END")
+            ->orderByDesc('starts_at')
+            ->orderByDesc('id')
             ->first();
 
         if (! $subscription) {
@@ -121,6 +129,8 @@ class CompanyController extends Controller
         $summary = [
             'id' => $subscription->id,
             'plan' => optional($subscription->plan)->name ?? null,
+            'plan_slug' => optional($subscription->plan)->slug ?? null,
+            'features' => array_values(optional($subscription->plan)->features ?? []),
             'status' => $subscription->status,
             'starts_at' => $subscription->starts_at,
             'ends_at' => $subscription->ends_at,
@@ -130,6 +140,306 @@ class CompanyController extends Controller
         ];
 
         return response()->json(['subscription' => $summary]);
+    }
+
+    /**
+     * List active subscription plans available to this company.
+     */
+    public function subscriptionPlans(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user->load('role');
+        $roleName = strtolower($user->role->name ?? '');
+        if (! in_array($roleName, ['admin', 'superuser'])) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $plans = Plan::where('is_active', true)
+            ->orderBy('price')
+            ->get(['id', 'name', 'slug', 'description', 'price', 'billing_cycle', 'features']);
+
+        return response()->json(['plans' => $plans]);
+    }
+
+    /**
+     * Create or update current company's subscription.
+     */
+    public function upsertMySubscription(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user->load('role');
+        $roleName = strtolower($user->role->name ?? '');
+        if (! in_array($roleName, ['admin', 'superuser'])) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        if (! $user->company_id) {
+            return response()->json(['error' => 'No company associated'], 404);
+        }
+
+        $validated = $request->validate([
+            'plan_id' => 'required|exists:plans,id',
+        ]);
+
+        $plan = Plan::where('id', $validated['plan_id'])
+            ->where('is_active', true)
+            ->first();
+
+        if (! $plan) {
+            return response()->json(['error' => 'Selected plan is not active'], 422);
+        }
+
+        $subscription = Subscription::where('company_id', $user->company_id)->first();
+
+        if (! $subscription) {
+            $subscription = Subscription::create([
+                'company_id' => $user->company_id,
+                'plan_id' => $plan->id,
+                'status' => 'active',
+                'starts_at' => now(),
+                'ends_at' => null,
+                'trial_ends_at' => null,
+                'on_trial' => false,
+                'monthly_fee' => $plan->price,
+            ]);
+        } else {
+            $subscription->plan_id = $plan->id;
+            $subscription->monthly_fee = $plan->price;
+            $subscription->status = 'active';
+            $subscription->starts_at = $subscription->starts_at ?: now();
+            $subscription->save();
+        }
+
+        $subscription->load('plan');
+
+        return response()->json([
+            'message' => 'Subscription saved successfully',
+            'subscription' => [
+                'id' => $subscription->id,
+                'plan' => optional($subscription->plan)->name,
+                'plan_slug' => optional($subscription->plan)->slug,
+                'features' => array_values(optional($subscription->plan)->features ?? []),
+                'status' => $subscription->status,
+                'starts_at' => $subscription->starts_at,
+                'ends_at' => $subscription->ends_at,
+                'trial_ends_at' => $subscription->trial_ends_at,
+                'on_trial' => (bool) $subscription->on_trial,
+                'monthly_fee' => $subscription->monthly_fee,
+            ]
+        ]);
+    }
+
+    /**
+     * Renew current company's subscription by one billing cycle.
+     */
+    public function renewMySubscription(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user->load('role');
+        $roleName = strtolower($user->role->name ?? '');
+        if (! in_array($roleName, ['admin', 'superuser'])) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $subscription = Subscription::with('plan')
+            ->where('company_id', $user->company_id)
+            ->first();
+
+        if (! $subscription) {
+            return response()->json(['error' => 'No subscription found'], 404);
+        }
+
+        $cycleMonths = optional($subscription->plan)->billing_cycle === 'annual' ? 12 : 1;
+        $baseDate = $subscription->ends_at
+            ? Carbon::parse($subscription->ends_at)
+            : now();
+        if ($baseDate->lt(now())) {
+            $baseDate = now();
+        }
+
+        $subscription->ends_at = $baseDate->copy()->addMonths($cycleMonths);
+        $subscription->status = 'active';
+        $subscription->save();
+
+        return response()->json(['message' => 'Subscription renewed successfully']);
+    }
+
+    /**
+     * Cancel current company's subscription.
+     */
+    public function cancelMySubscription(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user->load('role');
+        $roleName = strtolower($user->role->name ?? '');
+        if (! in_array($roleName, ['admin', 'superuser'])) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $subscription = Subscription::where('company_id', $user->company_id)->first();
+        if (! $subscription) {
+            return response()->json(['error' => 'No subscription found'], 404);
+        }
+
+        $subscription->status = 'canceled';
+        $subscription->save();
+
+        return response()->json(['message' => 'Subscription canceled successfully']);
+    }
+
+    /**
+     * Reactivate current company's subscription.
+     */
+    public function activateMySubscription(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user->load('role');
+        $roleName = strtolower($user->role->name ?? '');
+        if (! in_array($roleName, ['admin', 'superuser'])) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $subscription = Subscription::where('company_id', $user->company_id)->first();
+        if (! $subscription) {
+            return response()->json(['error' => 'No subscription found'], 404);
+        }
+
+        $subscription->status = 'active';
+        $subscription->starts_at = $subscription->starts_at ?: now();
+        $subscription->save();
+
+        return response()->json(['message' => 'Subscription activated successfully']);
+    }
+
+    /**
+     * Request a subscription plan upgrade (creates a pending request for superuser approval).
+     */
+    public function requestUpgrade(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user->load('role');
+        $roleName = strtolower($user->role->name ?? '');
+        if (! in_array($roleName, ['admin', 'superuser'])) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        if (! $user->company_id) {
+            return response()->json(['error' => 'No company associated'], 404);
+        }
+
+        $validated = $request->validate([
+            'plan_id'      => 'required|exists:plans,id',
+            'admin_notes'  => 'nullable|string|max:1000',
+        ]);
+
+        $plan = Plan::where('id', $validated['plan_id'])->where('is_active', true)->first();
+        if (! $plan) {
+            return response()->json(['error' => 'Selected plan is not active'], 422);
+        }
+
+        $subscription = Subscription::where('company_id', $user->company_id)->first();
+
+        // Block if requesting the same plan already active
+        if ($subscription && $subscription->plan_id == $plan->id) {
+            return response()->json(['error' => 'You are already on this plan'], 422);
+        }
+
+        // Block if there is already a pending request for this company
+        $pending = SubscriptionUpgradeRequest::where('company_id', $user->company_id)
+            ->where('status', 'pending')
+            ->first();
+
+        if ($pending) {
+            return response()->json([
+                'error' => 'You already have a pending upgrade request. Please wait for superuser review.',
+            ], 422);
+        }
+
+        $upgradeRequest = SubscriptionUpgradeRequest::create([
+            'company_id'        => $user->company_id,
+            'subscription_id'   => $subscription?->id,
+            'current_plan_id'   => $subscription?->plan_id,
+            'requested_plan_id' => $plan->id,
+            'requested_by'      => $user->id,
+            'status'            => 'pending',
+            'admin_notes'       => $validated['admin_notes'] ?? null,
+        ]);
+
+        // Notify all superusers
+        $company = $user->company ?? \App\Models\Company::find($user->company_id);
+        $companyName = $company?->name ?? 'A company';
+        AppNotification::notifyRole(
+            'superuser',
+            "{$companyName} has requested an upgrade to {$plan->name}.",
+            'info',
+            ['upgrade_request_id' => $upgradeRequest->id, 'company_id' => $user->company_id]
+        );
+
+        return response()->json([
+            'message' => 'Upgrade request submitted. Awaiting superuser approval.',
+            'request' => $upgradeRequest->load(['currentPlan', 'requestedPlan']),
+        ], 201);
+    }
+
+    /**
+     * Get the current company's latest upgrade request (so admin tab can show pending status).
+     */
+    public function myUpgradeRequest(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        if (! $user->company_id) {
+            return response()->json(['upgrade_request' => null]);
+        }
+
+        $req = SubscriptionUpgradeRequest::with(['currentPlan', 'requestedPlan', 'reviewedBy'])
+            ->where('company_id', $user->company_id)
+            ->latest()
+            ->first();
+
+        if (! $req) {
+            return response()->json(['upgrade_request' => null]);
+        }
+
+        return response()->json([
+            'upgrade_request' => [
+                'id'             => $req->id,
+                'status'         => $req->status,
+                'current_plan'   => optional($req->currentPlan)->name,
+                'requested_plan' => optional($req->requestedPlan)->name,
+                'admin_notes'    => $req->admin_notes,
+                'reviewer_notes' => $req->reviewer_notes,
+                'reviewed_at'    => $req->reviewed_at,
+                'created_at'     => $req->created_at,
+            ],
+        ]);
     }
 
     public function getAllCompanies(Request $request)
@@ -197,6 +507,9 @@ class CompanyController extends Controller
             'active' => false,
         ]);
 
+        PriceGroupService::ensureDefaultsForCompany($company->id);
+        SubscriptionPlanService::ensureCompanyDefaultSubscription($company->id);
+
 
         // Find or create admin role
         $adminRole = Role::firstOrCreate(['name' => 'Admin']);
@@ -210,8 +523,16 @@ class CompanyController extends Controller
             'company_id' => $company->id,
             'verified' => false,
             'position' => $request->owner_position,
-
         ]);
+
+        // Send notification email to superusers about pending registration
+        $superuserRole = Role::where('name', 'Superuser')->first();
+        if ($superuserRole) {
+            $superusers = User::where('role_id', $superuserRole->id)->get();
+            foreach ($superusers as $superuser) {
+                Mail::to($superuser->email)->send(new CompanyRegistrationPending($company, $user));
+            }
+        }
 
         return response()->json([
             'message' => 'Company registration submitted successfully. Await approval.',
@@ -243,6 +564,9 @@ class CompanyController extends Controller
             $validated['approved'] = true;
 
             $company = Company::create($validated);
+
+            PriceGroupService::ensureDefaultsForCompany($company->id);
+            SubscriptionPlanService::ensureCompanyDefaultSubscription($company->id);
 
             return response()->json([
                 'message' => 'Business created successfully',
@@ -314,7 +638,28 @@ class CompanyController extends Controller
     {
         $company = Company::findOrFail($id);
         $company->approved = true;
+        $company->active = true;
         $company->save();
+
+        // Generate a default password for the admin user
+        $defaultPassword = \Illuminate\Support\Str::random(12);
+        
+        // Find the admin user of this company and update their password
+        $admin = User::where('company_id', $company->id)
+                    ->whereHas('role', function($q) {
+                        $q->where('name', 'Admin');
+                    })
+                    ->first();
+        
+        if ($admin) {
+            $admin->password = Hash::make($defaultPassword);
+            $admin->verified = true;
+            $admin->save();
+            
+            // Send approval email with credentials to the admin
+            Mail::to($admin->email)->send(new CompanyVerified($company, $admin, $defaultPassword));
+        }
+
         return response()->json(['message' => 'Company approved successfully', 'company' => $company]);
     }
 

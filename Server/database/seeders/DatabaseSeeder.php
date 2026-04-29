@@ -21,6 +21,9 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call([
+            // System defaults that all companies inherit
+            \Database\Seeders\TaxConfigurationSeeder::class,
+            \Database\Seeders\PlanSeeder::class,
             // ...other seeders...
             \Database\Seeders\SuperuserSeeder::class,
             \Database\Seeders\PaymentMethodSeeder::class,

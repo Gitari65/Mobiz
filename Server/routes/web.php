@@ -13,6 +13,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaxConfigurationController;
+use App\Http\Controllers\AuditLogController;
 
 //superuser
 
@@ -53,14 +54,38 @@ Route::middleware('auth:sanctum')->prefix('api/profile')->group(function () {
 Route::post('/api/password/reset-with-token', [ProfileController::class, 'resetPasswordWithToken']);
 
 // Company Profile Management Routes (Authenticated Admin/Superuser)
-Route::middleware('auth:sanctum')->prefix('api/company')->group(function () {
+Route::middleware('auth:sanctum')->prefix('company')->group(function () {
     Route::get('/me', [CompanyController::class, 'myCompany']);
     Route::put('/me', [CompanyController::class, 'updateMyCompany']);
     Route::get('/subscription', [CompanyController::class, 'mySubscription']);
+    Route::get('/subscription/plans', [CompanyController::class, 'subscriptionPlans']);
+    Route::post('/subscription', [CompanyController::class, 'upsertMySubscription']);
+    Route::post('/subscription/renew', [CompanyController::class, 'renewMySubscription']);
+    Route::delete('/subscription', [CompanyController::class, 'cancelMySubscription']);
+    Route::patch('/subscription/activate', [CompanyController::class, 'activateMySubscription']);
+    Route::post('/subscription/request-upgrade', [CompanyController::class, 'requestUpgrade']);
+    Route::get('/subscription/upgrade-request', [CompanyController::class, 'myUpgradeRequest']);
+});
+
+// Admin audit logs without /api prefix for admin UI consumers using plain axios baseURL.
+Route::middleware(['auth:sanctum'])->prefix('admin/audit-logs')->group(function () {
+    Route::get('/', [AuditLogController::class, 'adminIndex']);
+    Route::get('/{id}', [AuditLogController::class, 'adminShow']);
+    Route::patch('/{id}', [AuditLogController::class, 'adminUpdate']);
+    Route::delete('/{id}', [AuditLogController::class, 'adminDestroy']);
+    Route::delete('/', [AuditLogController::class, 'adminBulkDestroy']);
 });
 
 // Companies List Route (for SuperUser to get all companies)
 Route::middleware('auth:sanctum')->get('/api/companies', [CompanyController::class, 'getAllCompanies']);
+
+// ── In-app Notifications ───────────────────────────────────────────────────
+Route::middleware('auth:sanctum')->prefix('api/notifications')->group(function () {
+    Route::get('/',             [\App\Http\Controllers\NotificationController::class, 'index']);
+    Route::get('/unread-count', [\App\Http\Controllers\NotificationController::class, 'unreadCount']);
+    Route::post('/read-all',    [\App\Http\Controllers\NotificationController::class, 'markAllRead']);
+    Route::post('/{id}/read',   [\App\Http\Controllers\NotificationController::class, 'markRead']);
+});
 
 // Product Empties/Returnables (API exposure here to ensure route availability)
 Route::prefix('api')->middleware('api')->group(function () {
@@ -289,6 +314,14 @@ Route::prefix('api/super')->middleware(['auth:sanctum'])->group(function () {
     Route::post('/subscriptions/{id}/renew', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'renew']);
     Route::post('/subscriptions/{id}/trial', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'assignTrial']);
     Route::get('/subscriptions/{id}/transactions', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'transactions']);
+    Route::put('/subscriptions/{id}/plan', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'changePlan']);
+    Route::post('/subscriptions/company/{companyId}', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'createForCompany']);
+    Route::get('/companies-without-subscription', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'companiesWithoutSubscription']);
+
+    // Upgrade Requests
+    Route::get('/upgrade-requests', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'listUpgradeRequests']);
+    Route::post('/upgrade-requests/{id}/approve', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'approveUpgrade']);
+    Route::post('/upgrade-requests/{id}/reject', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'rejectUpgrade']);
 
     // Plan management
     Route::get('/plans', [\App\Http\Controllers\SuperUser\SubscriptionController::class, 'listPlans']);
@@ -335,6 +368,7 @@ Route::middleware('auth:sanctum')->group(function () {
 // UOM (Units of Measurement)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/uoms', [\App\Http\Controllers\UOMController::class, 'index']);
+    Route::get('/uoms/conversion-factor', [\App\Http\Controllers\UOMController::class, 'conversionFactor']);
     Route::post('/uoms', [\App\Http\Controllers\UOMController::class, 'store']);
     Route::put('/uoms/{id}', [\App\Http\Controllers\UOMController::class, 'update']);
     Route::delete('/uoms/{id}', [\App\Http\Controllers\UOMController::class, 'destroy']);
@@ -369,6 +403,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/price-groups', [\App\Http\Controllers\PriceGroupController::class, 'store']);
     Route::get('/price-groups/{id}', [\App\Http\Controllers\PriceGroupController::class, 'show']);
     Route::put('/price-groups/{id}', [\App\Http\Controllers\PriceGroupController::class, 'update']);
+    Route::post('/price-groups/{id}/toggle', [\App\Http\Controllers\PriceGroupController::class, 'toggle']);
     Route::delete('/price-groups/{id}', [\App\Http\Controllers\PriceGroupController::class, 'destroy']);
 });
 
@@ -465,17 +500,34 @@ Route::middleware(['auth:sanctum'])->group(function () {
         if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
+        
         $payload = $request->validate([
             'name'=>'required|string|max:255',
             'email'=>'required|email|unique:users,email',
-            'password'=>'required|string|min:6',
+            'password'=>'nullable|string|min:6',
             'role_id'=>'required|exists:roles,id'
         ]);
+        
+        // Generate password if not provided
+        if (empty($payload['password'])) {
+            $payload['password'] = \Illuminate\Support\Str::random(12);
+        }
+        
+        $plainPassword = $payload['password'];
         $payload['company_id'] = $user->company_id;
         $payload['password'] = \Illuminate\Support\Facades\Hash::make($payload['password']);
         $payload['verified'] = true;
         $payload['must_change_password'] = true;
         $newUser = \App\Models\User::create($payload);
+        
+        // Send welcome email with credentials
+        try {
+            \Illuminate\Support\Facades\Mail::to($newUser->email)->send(new \App\Mail\WelcomeOneTimePassword($newUser, $plainPassword));
+            \Illuminate\Support\Facades\Log::info('Welcome email sent to new user', ['user_id' => $newUser->id, 'email' => $newUser->email]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to send welcome email to new user', ['error' => $e->getMessage(), 'user_id' => $newUser->id]);
+        }
+        
         return response()->json($newUser, 201);
     });
 
@@ -588,33 +640,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 
     // Payment Methods CRUD for admin
-    Route::get('/payment-methods', function () {
-        $user = auth()->user();
-        if (!$user || !in_array(strtolower($user->role->name), ['admin','administrator'])) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        
-        // Get all payment methods with company's enabled status
-        $methods = \App\Models\PaymentMethod::where('is_active', true)->get()->map(function($method) use ($user) {
-            $pivot = \DB::table('company_payment_methods')
-                ->where('company_id', $user->company_id)
-                ->where('payment_method_id', $method->id)
-                ->first();
-            
-            // Default enable Cash and M-Pesa for new companies
-            $defaultEnabled = in_array($method->name, ['Cash', 'M-Pesa']);
-            
-            return [
-                'id' => $method->id,
-                'name' => $method->name,
-                'description' => $method->description,
-                'is_enabled' => $pivot ? $pivot->is_enabled : $defaultEnabled,
-                'created_at' => $method->created_at
-            ];
-        });
-        
-        return response()->json($methods);
-    });
+    Route::get('/payment-methods', [\App\Http\Controllers\PaymentMethodController::class, 'companyIndex']);
 //customer supplier routes
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::post('/customers', [CustomerController::class, 'store']);    
@@ -647,7 +673,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
                 ]);
         } else {
             // Create new entry - determine initial state based on defaults
-            $defaultEnabled = in_array($method->name, ['Cash', 'M-Pesa']);
+            $normalized = strtolower(trim((string)$method->name));
+            $defaultEnabled = in_array($normalized, ['cash', 'm-pesa', 'mpesa', 'm pesa']);
             \DB::table('company_payment_methods')->insert([
                 'company_id' => $user->company_id,
                 'payment_method_id' => $id,
@@ -659,6 +686,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         return response()->json(['message' => 'Payment method toggled successfully']);
     });
+
+    Route::post('/payment-methods/{id}/set-enabled', [\App\Http\Controllers\PaymentMethodController::class, 'setEnabled']);
 });
 
 // --- REPORTS API ENDPOINTS (for ReportPage.vue) ---
@@ -707,5 +736,40 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/invoices', [\App\Http\Controllers\InvoiceController::class, 'store']);
     Route::get('/invoices/{id}', [\App\Http\Controllers\InvoiceController::class, 'show']);
     Route::put('/invoices/{id}', [\App\Http\Controllers\InvoiceController::class, 'update']);
+    Route::post('/invoices/{id}/reverse', [\App\Http\Controllers\InvoiceController::class, 'reverse']);
     Route::delete('/invoices/{id}', [\App\Http\Controllers\InvoiceController::class, 'destroy']);
+
+    // Sales CRUD (without /api prefix)
+    Route::get('/sales', [SaleController::class, 'index']);
+    Route::post('/sales', [SaleController::class, 'store']);
+    Route::get('/sales/{id}', [SaleController::class, 'show']);
+    Route::put('/sales/{id}', [SaleController::class, 'update']);
+    Route::delete('/sales/{id}', [SaleController::class, 'destroy']);
+    Route::get('/sales/stats/dashboard', [SaleController::class, 'getDashboardStats']);
+
+    // Products CRUD (without /api prefix)
+    Route::post('/products', [ProductController::class, 'store']);
+    Route::put('/products/{id}', [ProductController::class, 'update']);
+    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+    Route::post('/products/bulk', [ProductController::class, 'storeBulk']);
+    Route::post('/products/csv-upload', [ProductController::class, 'csvUpload']);
+    Route::post('/products/transfer', [\App\Http\Controllers\ProductTransferController::class, 'store']);
+
+    // Product Empties/Returnables (without /api prefix)
+    Route::get('/products/{product}/empties', [ProductController::class, 'getEmpties']);
+    Route::get('/products/{product}/available-empties', [ProductController::class, 'getAvailableEmpties']);
+    Route::post('/products/{product}/empties', [ProductController::class, 'linkEmpty']);
+    Route::put('/products/{product}/empties/{empty}', [ProductController::class, 'updateEmpty']);
+    Route::delete('/products/{product}/empties/{empty}', [ProductController::class, 'unlinkEmpty']);
+
+    // Product Pricing
+    Route::get('/products/{product}/price-for-group/{groupId}', [ProductController::class, 'getPriceForGroup']);
+    Route::get('/products/{product}/price-for-customer/{customerId}', [ProductController::class, 'getPriceForCustomer']);
+
+    // Inventory Management
+    Route::post('/inventory/restock', [\App\Http\Controllers\InventoryController::class, 'restock']);
+
+    // Purchases (Restock) & Warehouse Transfers
+    Route::post('/purchases', [PurchaseController::class, 'store']);
+    Route::get('/warehouse-transfers', [\App\Http\Controllers\ProductTransferController::class, 'index']);
 });

@@ -190,8 +190,8 @@
                   :key="product.id" 
                   class="data-row"
                   :class="{
-                    'low-stock': product.stock <= 10 && product.stock > 0,
-                    'out-of-stock': product.stock === 0
+                    'low-stock': product.stock_quantity <= 10 && product.stock_quantity > 0,
+                    'out-of-stock': product.stock_quantity === 0
                   }"
                 >
                   <td>
@@ -207,11 +207,11 @@
                   </td>
                   <td>
                     <div class="stock-info">
-                      <span class="stock-number" :class="getStockStatusClass(product.stock)">
-                        {{ product.stock }}
+                      <span class="stock-number" :class="getStockStatusClass(product.stock_quantity)">
+                        {{ product.stock_quantity }}
                       </span>
-                      <span class="stock-badge" :class="getStockStatusClass(product.stock)">
-                        {{ getStockStatus(product.stock) }}
+                      <span class="stock-badge" :class="getStockStatusClass(product.stock_quantity)">
+                        {{ getStockStatus(product.stock_quantity) }}
                       </span>
                     </div>
                   </td>
@@ -277,6 +277,140 @@
     </div>
 
     <!-- Modals -->
+    <!-- Add Product Modal -->
+    <div v-if="showAddProductModal" class="modal-overlay">
+      <div class="modal add-product-modal">
+        <div class="modal-header">
+          <h3>
+            <i class="fas fa-plus"></i>
+            Add New Product
+          </h3>
+          <button @click="closeAddProductModal" class="close-btn">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form class="product-form">
+            <div class="form-group">
+              <label>Product Name *</label>
+              <input v-model="addForm.name" type="text" placeholder="Enter product name" required class="form-input" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category *</label>
+                <input v-model="addForm.category" type="text" placeholder="e.g., Fertilizers" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>SKU (Optional)</label>
+                <input v-model="addForm.sku" type="text" placeholder="Stock Keeping Unit" class="form-input" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Price (KES) *</label>
+                <input v-model.number="addForm.price" type="number" step="0.01" min="0" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>Initial Stock *</label>
+                <input v-model.number="addForm.stock_quantity" type="number" min="0" required class="form-input" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Unit *</label>
+                <select v-model="addForm.unit" required class="form-input">
+                  <option value="pcs">Pieces</option>
+                  <option value="kg">Kilogram</option>
+                  <option value="liters">Liters</option>
+                  <option value="meters">Meters</option>
+                  <option value="bags">Bags</option>
+                  <option value="boxes">Boxes</option>
+                  <option value="crates">Crates</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Reorder Level *</label>
+                <input v-model.number="addForm.low_stock_threshold" type="number" min="0" required class="form-input" />
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeAddProductModal" class="modal-btn secondary">Cancel</button>
+          <button @click="saveProduct" class="modal-btn primary" :disabled="isSaving">
+            {{ isSaving ? 'Saving...' : 'Save Product' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Product Modal -->
+    <div v-if="showEditModal" class="modal-overlay">
+      <div class="modal edit-product-modal">
+        <div class="modal-header">
+          <h3>
+            <i class="fas fa-edit"></i>
+            Edit Product
+          </h3>
+          <button @click="closeEditModal" class="close-btn">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form class="product-form" v-if="editingProduct">
+            <div class="form-group">
+              <label>Product Name *</label>
+              <input v-model="editingProduct.name" type="text" placeholder="Enter product name" required class="form-input" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category *</label>
+                <input v-model="editingProduct.category" type="text" placeholder="e.g., Fertilizers" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>SKU (Optional)</label>
+                <input v-model="editingProduct.sku" type="text" placeholder="Stock Keeping Unit" class="form-input" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Price (KES) *</label>
+                <input v-model.number="editingProduct.price" type="number" step="0.01" min="0" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>Stock *</label>
+                <input v-model.number="editingProduct.stock_quantity" type="number" min="0" required class="form-input" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Unit *</label>
+                <select v-model="editingProduct.unit" required class="form-input">
+                  <option value="pcs">Pieces</option>
+                  <option value="kg">Kilogram</option>
+                  <option value="liters">Liters</option>
+                  <option value="meters">Meters</option>
+                  <option value="bags">Bags</option>
+                  <option value="boxes">Boxes</option>
+                  <option value="crates">Crates</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Reorder Level *</label>
+                <input v-model.number="editingProduct.low_stock_threshold" type="number" min="0" required class="form-input" />
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeEditModal" class="modal-btn secondary">Cancel</button>
+          <button @click="updateProduct" class="modal-btn primary" :disabled="isSaving">
+            {{ isSaving ? 'Saving...' : 'Update Product' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Delete Modal -->
     <div v-if="showDeleteModal" class="modal-overlay">
       <div class="modal delete-modal">
@@ -367,7 +501,7 @@
                   <select v-model="replenishForm.product_id" required>
                     <option value="">Select Product</option>
                     <option v-for="product in products" :key="product.id" :value="product.id">
-                      {{ product.name }} (Stock: {{ product.stock }})
+                      {{ product.name }} (Stock: {{ product.stock_quantity }})
                     </option>
                   </select>
                 </div>
@@ -528,7 +662,7 @@
                   <select v-model="item.product_id" @change="onTransferProductChange(index)" required class="form-select">
                     <option value="">Select Product</option>
                     <option v-for="product in products" :key="product.id" :value="product.id">
-                      {{ product.name }} (Stock: {{ product.stock }}, {{ getWarehouseName(product.warehouse_id) }})
+                      {{ product.name }} (Stock: {{ product.stock_quantity }}, {{ getWarehouseName(product.warehouse_id) }})
                     </option>
                   </select>
                 </div>
@@ -778,8 +912,21 @@ export default {
       isLoading: true,
       showDeleteModal: false,
       showReplenishModal: false,
+      showAddProductModal: false,
+      showEditModal: false,
+      isSaving: false,
       productToDelete: null,
       isDeleting: false,
+      editingProduct: null,
+      addForm: {
+        name: '',
+        category: '',
+        sku: '',
+        price: 0,
+        stock_quantity: 0,
+        unit: 'pcs',
+        low_stock_threshold: 0
+      },
       replenishStep: 1,
       replenishForm: {
         product_id: '',
@@ -898,14 +1045,14 @@ export default {
     },
     totalInventoryValue() {
       return this.products.reduce((sum, product) => {
-        return sum + (parseFloat(product.price) * parseFloat(product.stock))
+        return sum + (parseFloat(product.price) * parseFloat(product.stock_quantity))
       }, 0)
     },
     lowStock() {
-      return this.products.filter(product => product.stock <= 10 && product.stock > 0).length
+      return this.products.filter(product => product.stock_quantity <= 10 && product.stock_quantity > 0).length
     },
     outOfStock() {
-      return this.products.filter(product => product.stock === 0).length
+      return this.products.filter(product => product.stock_quantity === 0).length
     },
     canAddReplenishItem() {
       return this.replenishForm.product_id &&
@@ -934,7 +1081,7 @@ export default {
         const product = this.getProductById(item.product_id)
         if (!product) return false
         if (!qty || qty <= 0) return false
-        if (qty > product.stock) return false
+        if (qty > product.stock_quantity) return false
         return true
       })
     },
@@ -949,7 +1096,7 @@ export default {
     async fetchInventory() {
       this.isLoading = true
       try {
-        const response = await axios.get('http://localhost:8000/products')
+        const response = await axios.get('/products')
         this.products = response.data.data || response.data || []
       } catch (error) {
         console.error('Error fetching inventory:', error)
@@ -1038,7 +1185,7 @@ export default {
 
       this.isDeleting = true
       try {
-        await axios.delete(`/api/products/${this.productToDelete.id}`)
+        await axios.delete(`/products/${this.productToDelete.id}`)
         this.products = this.products.filter(p => p.id !== this.productToDelete.id)
         this.closeDeleteModal()
       } catch (error) {
@@ -1049,10 +1196,100 @@ export default {
       }
     },
     openAddProductModal() {
-      this.$emit('open-add-product')
+      this.addForm = {
+        name: '',
+        category: '',
+        sku: '',
+        price: 0,
+        stock: 0,
+        unit: 'pcs',
+        reorder_level: 0
+      }
+      this.showAddProductModal = true
+    },
+    closeAddProductModal() {
+      this.showAddProductModal = false
+      this.addForm = {
+        name: '',
+        category: '',
+        sku: '',
+        price: 0,
+        stock_quantity: 0,
+        unit: 'pcs',
+        low_stock_threshold: 0
+      }
     },
     editProduct(product) {
-      this.$emit('edit-product', product)
+      this.editingProduct = { ...product }
+      this.showEditModal = true
+    },
+    closeEditModal() {
+      this.showEditModal = false
+      this.editingProduct = null
+    },
+    async saveProduct() {
+      if (!this.addForm.name || !this.addForm.category || !this.addForm.price) {
+        alert('Please fill in all required fields')
+        return
+      }
+
+      this.isSaving = true
+      try {
+        const payload = {
+          name: this.addForm.name,
+          category: this.addForm.category,
+          sku: this.addForm.sku || '',
+          price: this.addForm.price,
+          stock_quantity: this.addForm.stock_quantity,
+          low_stock_threshold: this.addForm.low_stock_threshold
+        }
+        
+        const response = await axios.post('/products', payload)
+        this.products.push(response.data.data || response.data)
+        alert('Product added successfully!')
+        this.closeAddProductModal()
+      } catch (error) {
+        console.error('Error saving product:', error)
+        const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Failed to save product. Please try again.'
+        alert(errorMessage)
+      } finally {
+        this.isSaving = false
+      }
+    },
+    async updateProduct() {
+      if (!this.editingProduct.name || !this.editingProduct.category || !this.editingProduct.price) {
+        alert('Please fill in all required fields')
+        return
+      }
+
+      this.isSaving = true
+      try {
+        const payload = {
+          name: this.editingProduct.name,
+          category: this.editingProduct.category,
+          sku: this.editingProduct.sku || '',
+          price: this.editingProduct.price,
+          stock_quantity: this.editingProduct.stock_quantity,
+          low_stock_threshold: this.editingProduct.low_stock_threshold
+        }
+        
+        await axios.put(`/products/${this.editingProduct.id}`, payload)
+        
+        // Update product in list
+        const index = this.products.findIndex(p => p.id === this.editingProduct.id)
+        if (index !== -1) {
+          this.products[index] = this.editingProduct
+        }
+        
+        alert('Product updated successfully!')
+        this.closeEditModal()
+      } catch (error) {
+        console.error('Error updating product:', error)
+        const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Failed to update product. Please try again.'
+        alert(errorMessage)
+      } finally {
+        this.isSaving = false
+      }
     },
     openReplenishModal() {
       this.showReplenishModal = true
@@ -1130,7 +1367,7 @@ export default {
           items: this.replenishItems
         }
         
-        await axios.post('http://localhost:8000/purchases', payload)
+        await axios.post('/purchases', payload)
         alert('Restock completed successfully!')
         await this.fetchInventory()
         this.closeReplenishModal()
@@ -1146,7 +1383,7 @@ export default {
     // Stock Transfer
     async fetchWarehouses() {
       try {
-        const response = await axios.get('http://localhost:8000/warehouses')
+        const response = await axios.get('/warehouses')
         this.warehouses = response.data
       } catch (error) {
         console.error('Error fetching warehouses:', error)
@@ -1154,7 +1391,7 @@ export default {
     },
     async fetchSuppliers() {
       try {
-        const response = await axios.get('http://localhost:8000/suppliers')
+        const response = await axios.get('/suppliers')
         this.suppliers = response.data.data || response.data || []
       } catch (error) {
         console.error('Error fetching suppliers:', error)
@@ -1162,7 +1399,7 @@ export default {
     },
     async fetchCurrentUser() {
       try {
-        const response = await axios.get('http://localhost:8000/user')
+        const response = await axios.get('/user')
         this.currentUser = response.data
       } catch (error) {
         console.error('Error fetching current user:', error)
@@ -1229,7 +1466,7 @@ export default {
           return payload
         })
 
-        await Promise.all(payloads.map(payload => axios.post('http://localhost:8000/products/transfer', payload)))
+        await Promise.all(payloads.map(payload => axios.post('/products/transfer', payload)))
 
         alert('Stock transferred successfully!')
         await this.fetchInventory()
@@ -1247,7 +1484,7 @@ export default {
       this.showTransferHistory = true
       this.loadingHistory = true
       try {
-        const response = await axios.get('http://localhost:8000/warehouse-transfers')
+        const response = await axios.get('/warehouse-transfers')
         this.transferHistory = response.data
       } catch (error) {
         console.error('Error fetching transfer history:', error)
@@ -1309,7 +1546,7 @@ export default {
     },
     getProductStock(productId) {
       const product = this.getProductById(productId)
-      return product ? product.stock : 0
+      return product ? product.stock_quantity : 0
     },
     getProductWarehouseName(productId) {
       const product = this.getProductById(productId)
@@ -2816,5 +3053,62 @@ export default {
   font-size: 0.85rem;
   font-family: 'Courier New', monospace;
   letter-spacing: 0.5px;
+}
+
+/* Product Form Styling */
+.product-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-group label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.form-input,
+.form-textarea {
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  background: #f9fafb;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-input[type="number"],
+.form-input[type="email"],
+.form-input[type="text"],
+.form-input[type="date"],
+.form-input[type="time"] {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
 }
 </style>

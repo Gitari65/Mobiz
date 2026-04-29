@@ -28,8 +28,9 @@ class PurchaseController extends Controller
                 'notes' => 'nullable|string',
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
-                'items.*.quantity' => 'required|integer|min:1',
+                'items.*.quantity' => 'required|numeric|min:0.0001',
                 'items.*.cost' => 'required|numeric|min:0',
+                'items.*.uom_id' => 'nullable|exists:u_o_m_s,id',
                 'items.*.notes' => 'nullable|string'
             ]);
 
@@ -67,6 +68,7 @@ class PurchaseController extends Controller
                 PurchaseItem::create([
                     'purchase_id' => $purchase->id,
                     'product_id' => $item['product_id'],
+                    'uom_id' => $item['uom_id'] ?? null,
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['cost'],
                     'total_price' => $totalItemCost,
@@ -74,8 +76,23 @@ class PurchaseController extends Controller
                 ]);
 
                 // Update product stock
-                $product = Product::find($item['product_id']);
-                $product->increment('stock_quantity', $item['quantity']);
+                $product = Product::with('empties')->find($item['product_id']);
+                $purchaseUomId = $item['uom_id'] ?? $product->purchase_uom_id ?? $product->getBaseUomId();
+                $product->addStockForUom((float) $item['quantity'], $purchaseUomId);
+                
+                // Auto-increase linked returnables/empties based on quantity ratio
+                foreach ($product->empties as $empty) {
+                    // Calculate how many empties to add based on the ratio
+                    $emptyQuantityToAdd = (float) $item['quantity'] * $empty->pivot->quantity;
+                    
+                    // Add stock to the returnable/empty product
+                    $emptyProduct = Product::find($empty->id);
+                    if ($emptyProduct) {
+                        // Add stock using the empty's purchase UOM (usually it's the same as base UOM for returnables)
+                        $emptyPurchaseUomId = $emptyProduct->purchase_uom_id ?? $emptyProduct->getBaseUomId();
+                        $emptyProduct->addStockForUom($emptyQuantityToAdd, $emptyPurchaseUomId);
+                    }
+                }
                 
                 // Optionally update cost_price if provided
                 if (isset($item['cost']) && $item['cost'] > 0) {

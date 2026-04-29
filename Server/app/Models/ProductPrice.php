@@ -9,6 +9,7 @@ class ProductPrice extends Model
     protected $fillable = [
         'product_id',
         'price_group_id',
+        'uom_id',
         'price'
     ];
 
@@ -30,5 +31,10 @@ class ProductPrice extends Model
     public function priceGroup()
     {
         return $this->belongsTo(PriceGroup::class);
+    }
+
+    public function uom()
+    {
+        return $this->belongsTo(UOM::class);
     }
 }

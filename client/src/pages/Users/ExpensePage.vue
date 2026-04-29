@@ -315,7 +315,7 @@
     </div>
 
     <!-- Add/Edit Expense Modal -->
-    <div v-if="showAddExpenseModal || showEditExpenseModal" class="modal-overlay" @click="closeModals">
+    <div v-if="showAddExpenseModal || showEditExpenseModal" class="modal-overlay">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
           <h2>{{ showAddExpenseModal ? 'Add New Expense' : 'Edit Expense' }}</h2>
@@ -426,7 +426,7 @@
     </div>
 
     <!-- View Expense Modal -->
-    <div v-if="showViewExpenseModal" class="modal-overlay" @click="closeModals">
+    <div v-if="showViewExpenseModal" class="modal-overlay">
       <div class="modal-content large" @click.stop>
         <div class="modal-header">
           <h2>Expense Details</h2>

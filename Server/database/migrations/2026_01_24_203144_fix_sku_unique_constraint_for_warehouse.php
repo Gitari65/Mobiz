@@ -11,17 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            // Drop the old global unique constraint
-            try {
-                $table->dropUnique('products_sku_unique');
-            } catch (\Throwable $e) {
-                // Constraint might not exist
-            }
-            
-            // Create compound unique constraint: SKU should be unique per company and warehouse
-            $table->unique(['company_id', 'warehouse_id', 'sku'], 'products_company_warehouse_sku_unique');
-        });
+        // Check if required columns exist before adding constraint
+        if (Schema::hasTable('products') && Schema::hasColumns('products', ['company_id', 'warehouse_id', 'sku'])) {
+            Schema::table('products', function (Blueprint $table) {
+                // Drop the old global unique constraint
+                try {
+                    $table->dropUnique('products_sku_unique');
+                } catch (\Throwable $e) {
+                    // Constraint might not exist
+                }
+                
+                // Create compound unique constraint: SKU should be unique per company and warehouse
+                $table->unique(['company_id', 'warehouse_id', 'sku'], 'products_company_warehouse_sku_unique');
+            });
+        }
     }
 
     /**

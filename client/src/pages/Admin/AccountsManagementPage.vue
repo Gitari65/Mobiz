@@ -121,6 +121,7 @@
               <option value="sent">Sent</option>
               <option value="paid">Paid</option>
               <option value="overdue">Overdue</option>
+              <option value="reversed">Reversed</option>
             </select>
             <input 
               v-model="invoiceDateFrom" 
@@ -148,6 +149,7 @@
                   <th>Paid</th>
                   <th>Balance</th>
                   <th>Status</th>
+                  <th>Units</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -166,6 +168,9 @@
                     </span>
                   </td>
                   <td>
+                    <span class="status-badge draft">{{ getInvoiceUomSummary(invoice) }}</span>
+                  </td>
+                  <td>
                     <div class="action-buttons">
                       <button @click="viewInvoice(invoice)" class="icon-btn" title="View">
                         <i class="fas fa-eye"></i>
@@ -176,6 +181,14 @@
                       <button @click="printInvoice(invoice)" class="icon-btn" title="Print">
                         <i class="fas fa-print"></i>
                       </button>
+                      <button
+                        v-if="invoice.status !== 'reversed'"
+                        @click="reverseInvoice(invoice)"
+                        class="icon-btn warning"
+                        title="Reverse"
+                      >
+                        <i class="fas fa-undo"></i>
+                      </button>
                       <button @click="deleteInvoice(invoice)" class="icon-btn danger" title="Delete">
                         <i class="fas fa-trash"></i>
                       </button>
@@ -183,7 +196,7 @@
                   </td>
                 </tr>
                 <tr v-if="!filteredInvoices.length">
-                  <td colspan="9" class="no-data">No invoices found</td>
+                  <td colspan="10" class="no-data">No invoices found</td>
                 </tr>
               </tbody>
             </table>
@@ -269,7 +282,7 @@
     </div>
 
     <!-- Credit Limit Modal -->
-    <div v-if="showCreditLimitModal" class="modal-overlay" @click="showCreditLimitModal = false">
+    <div v-if="showCreditLimitModal" class="modal-overlay">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
           <h3>{{ editingCustomer ? 'Edit' : 'Set' }} Credit Limit</h3>
@@ -302,7 +315,7 @@
     </div>
 
     <!-- Payment Recording Modal -->
-    <div v-if="showPaymentModal" class="modal-overlay" @click="showPaymentModal = false">
+    <div v-if="showPaymentModal" class="modal-overlay">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
           <h3>Record Payment</h3>
@@ -434,10 +447,16 @@
             <div>
               <h4>Items</h4>
               <div v-for="(item, idx) in invoiceForm.items" :key="idx" class="invoice-item-row">
-                <select v-model="item.product_id" class="form-control" required>
+                <select v-model="item.product_id" class="form-control" required @change="onInvoiceProductChange(item)">
                   <option value="">Select Product</option>
                   <option v-for="p in products" :key="p.id" :value="p.id">
                     {{ p.name }} - Ksh {{ (p.price || 0).toLocaleString() }}
+                  </option>
+                </select>
+                <select v-model="item.uom_id" class="form-control" style="width:130px" @change="onInvoiceUomChange(item)">
+                  <option :value="null">UOM</option>
+                  <option v-for="u in getProductUomOptions(item.product_id)" :key="u.id" :value="u.id">
+                    {{ u.abbreviation || u.name }}
                   </option>
                 </select>
                 <input type="number" v-model.number="item.quantity" min="1" placeholder="Qty" class="form-control" style="width:70px" required />
@@ -454,7 +473,135 @@
         </div>
       </div>
     </div>
+
+    <!-- Invoice View Modal -->
+    <div v-if="viewingInvoice" class="modal-overlay" @click="viewingInvoice = null">
+      <div class="invoice-view-modal" @click.stop>
+        <div class="ivm-header">
+          <div class="ivm-header-info">
+            <span class="ivm-label">Invoice</span>
+            <h2 class="ivm-number">#{{ viewingInvoice.invoice_number }}</h2>
+            <span class="ivm-date">{{ formatDate(viewingInvoice.date || viewingInvoice.invoice_date) }}</span>
+          </div>
+          <div class="ivm-header-right">
+            <span class="ivm-status-badge" :class="'status-' + viewingInvoice.status">{{ viewingInvoice.status }}</span>
+            <button class="ivm-close-btn" @click="viewingInvoice = null"><i class="fas fa-times"></i></button>
+          </div>
+        </div>
+
+        <div class="ivm-body">
+          <div class="ivm-details-grid">
+            <div class="ivm-detail-card">
+              <div class="ivm-detail-label"><i class="fas fa-tag"></i> Type</div>
+              <div class="ivm-detail-value type-badge">{{ (viewingInvoice.type || 'sale').toUpperCase() }}</div>
+            </div>
+            <div class="ivm-detail-card">
+              <div class="ivm-detail-label"><i class="fas fa-user"></i> Customer</div>
+              <div class="ivm-detail-value">{{ viewingInvoice.customer_name || '—' }}</div>
+            </div>
+            <div class="ivm-detail-card">
+              <div class="ivm-detail-label"><i class="fas fa-calendar"></i> Due Date</div>
+              <div class="ivm-detail-value">{{ formatDate(viewingInvoice.due_date) || '—' }}</div>
+            </div>
+            <div class="ivm-detail-card">
+              <div class="ivm-detail-label"><i class="fas fa-boxes"></i> Items</div>
+              <div class="ivm-detail-value">{{ viewingInvoice.items?.length || 0 }} item(s)</div>
+            </div>
+          </div>
+
+          <div class="ivm-financials">
+            <div class="ivm-fin-row">
+              <span>Total Amount</span>
+              <span class="ivm-fin-value">Ksh {{ formatPrice(viewingInvoice.total) }}</span>
+            </div>
+            <div class="ivm-fin-row">
+              <span>Amount Paid</span>
+              <span class="ivm-fin-value paid">Ksh {{ formatPrice(viewingInvoice.paid_amount) }}</span>
+            </div>
+            <div class="ivm-fin-row total">
+              <span>Balance</span>
+              <span class="ivm-fin-value balance">Ksh {{ formatPrice(viewingInvoice.balance) }}</span>
+            </div>
+          </div>
+
+          <div v-if="viewingInvoice.items && viewingInvoice.items.length" class="ivm-items">
+            <h4 class="ivm-items-title"><i class="fas fa-list"></i> Invoice Items</h4>
+            <table class="ivm-items-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Qty</th>
+                  <th>UOM</th>
+                  <th>Unit Price</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in viewingInvoice.items" :key="item.id">
+                  <td>{{ item.product_name || item.description || '—' }}</td>
+                  <td>{{ item.quantity }}</td>
+                  <td>{{ item.uom?.abbreviation || item.uom?.name || 'Base' }}</td>
+                  <td>Ksh {{ formatPrice(item.unit_price) }}</td>
+                  <td>Ksh {{ formatPrice(item.quantity * item.unit_price) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-if="viewingInvoice.notes" class="ivm-notes">
+            <div class="ivm-detail-label"><i class="fas fa-sticky-note"></i> Notes</div>
+            <p>{{ viewingInvoice.notes }}</p>
+          </div>
+        </div>
+
+        <div class="ivm-footer">
+          <button class="btn-ivm-print" @click="printInvoice(viewingInvoice)"><i class="fas fa-print"></i> Print</button>
+          <button class="btn-ivm-close" @click="viewingInvoice = null"><i class="fas fa-times"></i> Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div v-if="customAlert.show" class="modal-overlay" @click="customAlert.show = false">
+      <div class="alert-modal" @click.stop :class="'alert-' + customAlert.type">
+        <div class="alert-icon">
+          <i v-if="customAlert.type === 'success'" class="fas fa-check-circle"></i>
+          <i v-else-if="customAlert.type === 'error'" class="fas fa-times-circle"></i>
+          <i v-else-if="customAlert.type === 'warning'" class="fas fa-exclamation-circle"></i>
+          <i v-else class="fas fa-info-circle"></i>
+        </div>
+        <div class="alert-content">
+          <h3>{{ customAlert.title }}</h3>
+          <p>{{ customAlert.message }}</p>
+        </div>
+        <div class="alert-actions">
+          <button @click="customAlert.show = false" class="btn-alert-close">{{ customAlert.buttonText || 'Close' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div v-if="confirmation.show" class="modal-overlay" @click="confirmation.show = false">
+      <div class="confirm-modal" @click.stop>
+        <div class="confirm-icon">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="confirm-content">
+          <h3>{{ confirmation.title }}</h3>
+          <p>{{ confirmation.message }}</p>
+        </div>
+        <div class="confirm-actions">
+          <button @click="confirmation.onConfirm()" class="btn-confirm-yes">
+            {{ confirmation.confirmText || 'Confirm' }}
+          </button>
+          <button @click="confirmation.show = false" class="btn-confirm-no">
+            {{ confirmation.cancelText || 'Cancel' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
+
 </template>
 
 <script setup>
@@ -722,13 +869,14 @@ async function saveCreditLimit() {
 
 
 const showInvoiceModal = ref(false)
+const viewingInvoice = ref(null)
 const invoiceForm = ref({
   type: 'sale',
   customer_id: '',
   supplier_id: '',
   due_date: '',
   notes: '',
-  items: [{ product_id: '', quantity: 1, unit_price: 0 }]
+  items: [{ product_id: '', uom_id: null, quantity: 1, unit_price: 0 }]
 })
 const products = ref([])
 const customersList = ref([])
@@ -745,6 +893,23 @@ const newSupplier = ref({
 })
 const supplierLoading = ref(false)
 const supplierError = ref('')
+
+// Custom alerts and confirmations
+const customAlert = ref({
+  show: false,
+  type: 'success', // success, error, warning, info
+  title: '',
+  message: '',
+  buttonText: 'Close'
+})
+const confirmation = ref({
+  show: false,
+  title: '',
+  message: '',
+  confirmText: 'Confirm',
+  cancelText: 'Cancel',
+  onConfirm: () => {}
+})
 
 // ...existing code...
 
@@ -779,7 +944,7 @@ async function fetchSuppliersList() {
 }
 
 function addInvoiceItem() {
-  invoiceForm.value.items.push({ product_id: '', quantity: 1, unit_price: 0 })
+  invoiceForm.value.items.push({ product_id: '', uom_id: null, quantity: 1, unit_price: 0 })
 }
 function removeInvoiceItem(idx) {
   if (invoiceForm.value.items.length > 1) invoiceForm.value.items.splice(idx, 1)
@@ -793,25 +958,177 @@ function closeInvoiceModal() {
     supplier_id: '',
     due_date: '',
     notes: '',
-    items: [{ product_id: '', quantity: 1, unit_price: 0 }]
+    items: [{ product_id: '', uom_id: null, quantity: 1, unit_price: 0 }]
   }
 }
+
+function getProductById(productId) {
+  return products.value.find(p => Number(p.id) === Number(productId)) || null
+}
+
+function getProductUomOptions(productId) {
+  const product = getProductById(productId)
+  if (!product) return []
+
+  const saleUoms = getProductSaleUoms(product)
+  if (saleUoms.length > 0) {
+    return saleUoms
+  }
+
+  const fallbacks = [getProductSaleUom(product), getProductPurchaseUom(product), getProductBaseUom(product)].filter(Boolean)
+  const deduped = []
+  const seen = new Set()
+  for (const u of fallbacks) {
+    if (!seen.has(Number(u.id))) {
+      seen.add(Number(u.id))
+      deduped.push(u)
+    }
+  }
+  return deduped
+}
+
+function getProductSaleUoms(product) {
+  if (!product) return []
+  if (Array.isArray(product.saleUoms)) return product.saleUoms
+  if (Array.isArray(product.sale_uoms)) return product.sale_uoms
+  return []
+}
+
+function getProductSaleUom(product) {
+  return product?.saleUom || product?.sale_uom || null
+}
+
+function getProductPurchaseUom(product) {
+  return product?.purchaseUom || product?.purchase_uom || null
+}
+
+function getProductBaseUom(product) {
+  return product?.uom || product?.base_uom || null
+}
+
+function getProductPriceForUom(product, uomId) {
+  if (!product) return 0
+
+  const targetUomId = Number(uomId || 0)
+  const fallbackPrice = Number(product.price || 0)
+  if (!targetUomId) return fallbackPrice
+
+  const uomPrices = product.uom_prices
+  if (uomPrices && typeof uomPrices === 'object' && !Array.isArray(uomPrices)) {
+    const resolved = uomPrices[targetUomId] ?? uomPrices[String(targetUomId)]
+    if (resolved !== undefined && resolved !== null && !Number.isNaN(Number(resolved))) {
+      return Number(resolved)
+    }
+  }
+
+  const prices = Array.isArray(product.prices) ? product.prices : []
+  const matched = prices.find(entry => Number(entry?.uom_id) === targetUomId && entry?.price !== undefined && entry?.price !== null)
+  return matched ? Number(matched.price) : fallbackPrice
+}
+
+function onInvoiceProductChange(item) {
+  const product = getProductById(item.product_id)
+  if (!product) {
+    item.uom_id = null
+    item.unit_price = 0
+    return
+  }
+
+  const options = getProductUomOptions(item.product_id)
+  if (!options.length) {
+    item.uom_id = null
+  } else if (!options.some(u => Number(u.id) === Number(item.uom_id))) {
+    item.uom_id = options[0].id
+  }
+
+  item.unit_price = getProductPriceForUom(product, item.uom_id)
+}
+
+function onInvoiceUomChange(item) {
+  const product = getProductById(item.product_id)
+  if (!product) return
+  item.unit_price = getProductPriceForUom(product, item.uom_id)
+}
+
+function getInvoiceUomSummary(invoice) {
+  const items = Array.isArray(invoice?.items) ? invoice.items : []
+  if (!items.length) return 'No items'
+
+  const counters = {}
+  for (const item of items) {
+    const label = item?.uom?.abbreviation || item?.uom?.name || 'Base'
+    counters[label] = (counters[label] || 0) + 1
+  }
+
+  const parts = Object.entries(counters).map(([label, count]) => {
+    return count > 1 ? `${label} x${count}` : label
+  })
+
+  const preview = parts.slice(0, 2).join(', ')
+  if (parts.length > 2) {
+    return `${preview} +${parts.length - 2}`
+  }
+  return preview
+}
+
+// Custom Alert Helper Methods
+function showAlert(type, title, message, buttonText = 'Close') {
+  customAlert.value = {
+    show: true,
+    type,
+    title,
+    message,
+    buttonText
+  }
+}
+
+function showSuccess(title, message) {
+  showAlert('success', title, message, 'OK')
+}
+
+function showError(title, message) {
+  showAlert('error', title, message, 'Close')
+}
+
+function showWarning(title, message) {
+  showAlert('warning', title, message, 'OK')
+}
+
+function showInfo(title, message) {
+  showAlert('info', title, message, 'OK')
+}
+
+// Custom Confirmation Helper Method
+function showConfirmation(title, message, onConfirm, confirmText = 'Confirm', cancelText = 'Cancel') {
+  confirmation.value = {
+    show: true,
+    title,
+    message,
+    confirmText,
+    cancelText,
+    onConfirm: () => {
+      confirmation.value.show = false
+      onConfirm()
+    }
+  }
+}
+
 async function saveInvoice() {
   try {
     // Validate required fields before sending
     if (!invoiceForm.value.items || invoiceForm.value.items.length === 0) {
-      alert('Please add at least one item to the invoice')
+      showWarning('Validation Error', 'Please add at least one item to the invoice')
       return
     }
 
     // Validate invoice type-specific required fields
     if (invoiceForm.value.type === 'sale' && !invoiceForm.value.customer_id) {
-      alert('Please select a customer for sale invoices')
+      showWarning('Validation Error', 'Please select a customer for sale invoices')
       return
     }
 
     if (invoiceForm.value.type === 'purchase' && !invoiceForm.value.supplier_id) {
-      alert('Please select a supplier for purchase invoices')
+      showWarning('Validation Error', 'Please select a supplier for purchase invoices')
       return
     }
 
@@ -821,7 +1138,7 @@ async function saveInvoice() {
     )
 
     if (invalidItems.length > 0) {
-      alert('Please ensure all items have valid product, quantity, and unit price')
+      showWarning('Validation Error', 'Please ensure all items have valid product, quantity, and unit price')
       return
     }
 
@@ -833,6 +1150,7 @@ async function saveInvoice() {
       notes: invoiceForm.value.notes || null,
       items: invoiceForm.value.items.map(i => ({
         product_id: i.product_id ? parseInt(i.product_id) : null,
+        uom_id: i.uom_id ? parseInt(i.uom_id) : null,
         quantity: parseInt(i.quantity),
         unit_price: parseFloat(i.unit_price),
         description: null
@@ -855,12 +1173,12 @@ async function saveInvoice() {
 
     console.log('Invoice payload:', payload)
 
-    const res = await axios.post('/api/invoices', payload)
+    const res = await axios.post('/invoices', payload)
     
     console.log('Invoice created:', res.data)
     closeInvoiceModal()
     await fetchInvoices()
-    alert('Invoice created successfully!')
+    showSuccess('Invoice Created', 'Invoice has been created successfully!')
   } catch (err) {
     console.error('Failed to create invoice:', err)
     
@@ -870,7 +1188,7 @@ async function saveInvoice() {
       || (err.response?.data?.details ? Object.values(err.response.data.details).join(', ') : '')
       || err.message
     
-    alert(`Failed to create invoice:\n${errorMessage}`)
+    showError('Failed to Create Invoice', errorMessage)
   }
 }
 function handleSupplierChange() {
@@ -984,21 +1302,215 @@ async function rejectReturn(returnItem) {
 
 async function fetchInvoices() {
   try {
-    const res = await axios.get('/api/invoices')
-    // Fix: handle paginated response (Laravel returns {data: [...]})
+    const res = await axios.get('/invoices')
+    // Handle paginated response from Laravel
     const list = Array.isArray(res.data)
       ? res.data
       : Array.isArray(res.data?.data)
         ? res.data.data
-        : []
+        : res.data?.data || []
+    
     invoices.value = list.map(inv => ({
-      ...inv,
-      customer_name: inv.customer?.name || 'Unknown'
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      customer_name: inv.customer?.name || 'Unknown',
+      date: inv.invoice_date,
+      due_date: inv.due_date,
+      total: parseFloat(inv.total || 0),
+      paid_amount: parseFloat(inv.paid_amount || 0),
+      balance: parseFloat(inv.balance || 0),
+      status: inv.status,
+      type: inv.type,
+      items: inv.items || [],
+      customer: inv.customer,
+      created_at: inv.created_at
     }))
   } catch (err) {
     console.error('Failed to fetch invoices', err)
     invoices.value = []
   }
+}
+
+function viewInvoice(invoice) {
+  viewingInvoice.value = invoice
+}
+
+async function editInvoice(invoice) {
+  if (invoice.status === 'reversed') {
+    showWarning('Invoice Reversed', 'A reversed invoice cannot be edited.')
+    return
+  }
+
+  // Show status edit confirmation
+  const statusOptions = ['draft', 'sent', 'paid', 'cancelled']
+  const currentStatus = invoice.status || 'draft'
+  
+  showConfirmation(
+    'Edit Invoice Status',
+    `Current status: ${currentStatus}. Update to a new status?`,
+    () => {
+      // Prompt for new status
+      const newStatus = prompt('Enter new status (draft, sent, paid, cancelled):', currentStatus)
+      if (!newStatus) return
+      
+      const validStatuses = ['draft', 'sent', 'paid', 'cancelled']
+      if (!validStatuses.includes(newStatus)) {
+        showError('Invalid Status', 'Status must be one of: ' + validStatuses.join(', '))
+        return
+      }
+      
+      // Make the update
+      updateInvoiceStatus(invoice.id, newStatus)
+    },
+    'Yes, Edit',
+    'Cancel'
+  )
+}
+
+async function updateInvoiceStatus(invoiceId, newStatus) {
+  try {
+    await axios.put(`/invoices/${invoiceId}`, { status: newStatus })
+    showSuccess('Invoice Updated', 'Invoice status has been updated successfully!')
+    await fetchInvoices()
+  } catch (err) {
+    console.error('Failed to update invoice', err)
+    showError('Update Failed', err.response?.data?.error || 'Failed to update invoice')
+  }
+}
+
+function printInvoice(invoice) {
+  // Build printable HTML
+  const html = `
+    <html>
+      <head>
+        <title>Invoice ${invoice.invoice_number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .invoice-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
+          .invoice-number { font-size: 24px; font-weight: bold; }
+          .invoice-date { color: #666; }
+          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          th { background: #f0f0f0; padding: 10px; text-align: left; }
+          td { padding: 8px; border-bottom: 1px solid #ddd; }
+          .total-row { font-weight: bold; }
+          .footer { margin-top: 40px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-header">
+          <div class="invoice-number">Invoice ${invoice.invoice_number}</div>
+          <div class="invoice-date">${formatDate(invoice.date)}</div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <strong>Bill To:</strong>
+          <p>${invoice.customer_name}</p>
+          <strong>Status:</strong>
+          <p>${invoice.status}</p>
+        </div>
+        
+        <table>
+          <tr>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Unit Price</th>
+            <th>Total</th>
+          </tr>
+          ${(invoice.items || []).map(item => `
+            <tr>
+              <td>${item.product?.name || 'Item ' + item.id}</td>
+              <td>${item.quantity} ${item.uom?.abbreviation || item.uom?.name || ''}</td>
+              <td>Ksh ${formatPrice(item.unit_price || 0)}</td>
+              <td>Ksh ${formatPrice((item.unit_price || 0) * item.quantity)}</td>
+            </tr>
+          `).join('')}
+          <tr class="total-row">
+            <td colspan="3">TOTAL</td>
+            <td>Ksh ${formatPrice(invoice.total)}</td>
+          </tr>
+          <tr>
+            <td colspan="3">Paid</td>
+            <td>Ksh ${formatPrice(invoice.paid_amount)}</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="3">Balance Due</td>
+            <td>Ksh ${formatPrice(invoice.balance)}</td>
+          </tr>
+        </table>
+        
+        <div class="footer">
+          <p>Due: ${formatDate(invoice.due_date)}</p>
+          <p>Thank you for your business!</p>
+        </div>
+      </body>
+    </html>
+  `
+  
+  const printWindow = window.open('', '', 'height=600,width=800')
+  printWindow.document.write(html)
+  printWindow.document.close()
+  setTimeout(() => {
+    printWindow.print()
+  }, 250)
+}
+
+async function deleteInvoice(invoice) {
+  showConfirmation(
+    'Delete Invoice',
+    `Are you sure you want to delete invoice ${invoice.invoice_number}? This action cannot be undone.`,
+    async () => {
+      try {
+        await axios.delete(`/invoices/${invoice.id}`)
+        showSuccess('Invoice Deleted', 'Invoice has been deleted successfully!')
+        await fetchInvoices()
+      } catch (err) {
+        console.error('Failed to delete invoice', err)
+        showError('Delete Failed', err.response?.data?.error || 'Failed to delete invoice')
+      }
+    },
+    'Delete',
+    'Cancel'
+  )
+}
+
+async function reverseInvoice(invoice) {
+  if (invoice.status === 'reversed') {
+    showInfo('Already Reversed', 'This invoice is already reversed.')
+    return
+  }
+
+  showConfirmation(
+    'Reverse Invoice',
+    `Reverse invoice ${invoice.invoice_number}? Items will return to inventory and invoice amounts will be reset.`,
+    async () => {
+      try {
+        await axios.post(`/invoices/${invoice.id}/reverse`)
+
+        showSuccess('Invoice Reversed', 'Invoice reversed successfully.')
+
+        // Send a global admin notification to the top-right alerts center.
+        window.dispatchEvent(new CustomEvent('app:add-notification', {
+          detail: {
+            type: 'success',
+            message: `Invoice ${invoice.invoice_number} reversed successfully.`
+          }
+        }))
+
+        if (viewingInvoice.value && viewingInvoice.value.id === invoice.id) {
+          viewingInvoice.value.status = 'reversed'
+          viewingInvoice.value.paid_amount = 0
+          viewingInvoice.value.balance = 0
+        }
+
+        await fetchInvoices()
+      } catch (err) {
+        console.error('Failed to reverse invoice', err)
+        showError('Reverse Failed', err.response?.data?.message || err.response?.data?.error || 'Failed to reverse invoice')
+      }
+    },
+    'Reverse',
+    'Cancel'
+  )
 }
 
 async function fetchReturns() {
@@ -1215,6 +1727,11 @@ onMounted(() => {
   color: #2d3748;
 }
 
+.status-badge.reversed {
+  background: #e9d8fd;
+  color: #553c9a;
+}
+
 .action-buttons {
   display: flex;
   gap: 0.5rem;
@@ -1383,5 +1900,520 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+}
+
+/* Custom Alert Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeInOverlay 0.3s ease;
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.alert-modal {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 450px;
+  width: 90%;
+  padding: 2.5rem;
+  animation: slideUp 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.5rem;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.alert-icon {
+  font-size: 3.5rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+}
+
+.alert-success .alert-icon {
+  color: #48bb78;
+  background: rgba(72, 187, 120, 0.1);
+}
+
+.alert-error .alert-icon {
+  color: #e53e3e;
+  background: rgba(229, 62, 62, 0.1);
+}
+
+.alert-warning .alert-icon {
+  color: #ed8936;
+  background: rgba(237, 137, 54, 0.1);
+}
+
+.alert-info .alert-icon {
+  color: #3182ce;
+  background: rgba(49, 130, 206, 0.1);
+}
+
+.alert-content h3 {
+  margin: 0;
+  color: #2d3748;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.alert-content p {
+  margin: 0.5rem 0 0 0;
+  color: #718096;
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.alert-actions {
+  display: flex;
+  width: 100%;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.btn-alert-close {
+  flex: 1;
+  padding: 0.85rem 1.5rem;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+
+.btn-alert-close:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
+/* Custom Confirmation Modal Styles */
+.confirm-modal {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 450px;
+  width: 90%;
+  padding: 2.5rem;
+  animation: slideUp 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.5rem;
+}
+
+.confirm-icon {
+  font-size: 3.5rem;
+  color: #ed8936;
+  background: rgba(237, 137, 54, 0.1);
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.confirm-content h3 {
+  margin: 0;
+  color: #2d3748;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.confirm-content p {
+  margin: 0.5rem 0 0 0;
+  color: #718096;
+  line-height: 1.6;
+}
+
+.confirm-actions {
+  display: flex;
+  width: 100%;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.btn-confirm-yes,
+.btn-confirm-no {
+  flex: 1;
+  padding: 0.85rem 1.5rem;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+
+.btn-confirm-yes {
+  background: linear-gradient(135deg, #e53e3e, #c53030);
+  color: white;
+}
+
+.btn-confirm-yes:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(229, 62, 62, 0.3);
+}
+
+.btn-confirm-no {
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+.btn-confirm-no:hover {
+  background: #cbd5e0;
+  transform: translateY(-2px);
+}
+
+/* Invoice View Modal Styles */
+.invoice-view-modal {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.35);
+  max-width: 680px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.ivm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 2rem 2rem 1.5rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08), rgba(118, 75, 162, 0.08));
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 20px 20px 0 0;
+}
+
+.ivm-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #a0aec0;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.ivm-number {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ivm-date {
+  font-size: 0.85rem;
+  color: #718096;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.ivm-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ivm-status-badge {
+  padding: 0.4rem 1rem;
+  border-radius: 50px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-paid { background: #c6f6d5; color: #276749; }
+.status-pending { background: #fed7d7; color: #9b2335; }
+.status-draft { background: #e2e8f0; color: #4a5568; }
+.status-sent { background: #bee3f8; color: #2a69ac; }
+.status-overdue { background: #fed7d7; color: #9b2335; }
+.status-cancelled { background: #e2e8f0; color: #718096; }
+.status-reversed { background: #e9d8fd; color: #553c9a; }
+
+.ivm-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: #a0aec0;
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.ivm-close-btn:hover {
+  color: #e53e3e;
+  background: rgba(229, 62, 62, 0.08);
+}
+
+.ivm-body {
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.ivm-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.ivm-detail-card {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e2e8f0;
+}
+
+.ivm-detail-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #a0aec0;
+  margin-bottom: 0.4rem;
+}
+
+.ivm-detail-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.type-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ivm-financials {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ivm-fin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.ivm-fin-row.total {
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(102, 126, 234, 0.2);
+  font-weight: 700;
+  font-size: 1rem;
+  color: #2d3748;
+}
+
+.ivm-fin-value {
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.ivm-fin-value.paid { color: #276749; }
+.ivm-fin-value.balance { color: #e53e3e; }
+
+.ivm-items-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #718096;
+  margin: 0 0 0.75rem;
+}
+
+.ivm-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.ivm-items-table thead tr {
+  background: #f8fafc;
+}
+
+.ivm-items-table th {
+  padding: 0.7rem 1rem;
+  text-align: left;
+  color: #718096;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.ivm-items-table td {
+  padding: 0.8rem 1rem;
+  color: #2d3748;
+  border-bottom: 1px solid #f7fafc;
+}
+
+.ivm-items-table tbody tr:hover {
+  background: rgba(102, 126, 234, 0.04);
+}
+
+.ivm-notes {
+  background: #fffbeb;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border-left: 4px solid #ed8936;
+}
+
+.ivm-notes p {
+  margin: 0.5rem 0 0;
+  color: #744210;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.ivm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 1.25rem 2rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0 0 20px 20px;
+}
+
+.btn-ivm-print,
+.btn-ivm-close {
+  padding: 0.7rem 1.5rem;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-ivm-print {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+}
+
+.btn-ivm-print:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.35);
+}
+
+.btn-ivm-close {
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+.btn-ivm-close:hover {
+  background: #cbd5e0;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 600px) {
+  .invoice-view-modal {
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 95vh;
+  }
+
+  .ivm-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ivm-body {
+    padding: 1rem 1.25rem;
+  }
+
+  .ivm-header {
+    padding: 1.25rem;
+  }
+
+  .ivm-footer {
+    padding: 1rem 1.25rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .alert-modal,
+  .confirm-modal {
+    max-width: 90%;
+    padding: 1.5rem;
+  }
+
+  .alert-content h3,
+  .confirm-content h3 {
+    font-size: 1.25rem;
+  }
+
+  .alert-icon,
+  .confirm-icon {
+    width: 60px;
+    height: 60px;
+    font-size: 2.5rem;
+  }
+
+  .btn-alert-close,
+  .btn-confirm-yes,
+  .btn-confirm-no {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+  }
 }
 </style>

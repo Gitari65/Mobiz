@@ -11,6 +11,8 @@ use App\Models\Promotion;
 use App\Models\PromotionUsage;
 use App\Models\TaxConfiguration;
 use App\Models\Customer;
+use App\Models\MpesaTransaction;
+use App\Services\PriceGroupService;
 
 class SaleController extends Controller
 {
@@ -19,8 +21,9 @@ class SaleController extends Controller
         $validated = $request->validate([
             'items'                  => 'required|array|min:1',
             'items.*.product_id'     => 'required|exists:products,id',
-            'items.*.quantity'       => 'required|integer|min:1',
+            'items.*.quantity'       => 'required|numeric|min:0.0001',
             'items.*.price'          => 'required|numeric|min:0',
+            'items.*.uom_id'         => 'nullable|exists:u_o_m_s,id',
             'customer_id'            => 'nullable|integer|exists:customers,id',
             'payment_method'         => 'nullable|string|max:255',
             'tax'                    => 'nullable|numeric|min:0',
@@ -28,37 +31,69 @@ class SaleController extends Controller
             'tax_configuration_id'   => 'nullable|integer|exists:tax_configurations,id',
             'amount_paid'            => 'nullable|numeric|min:0',
             'apply_credit'           => 'nullable|boolean',
+            'mpesa_phone_number'     => 'nullable|string|max:20',
+            'mpesa_checkout_request_id' => 'nullable|string|max:255',
+            'mpesa_receipt_number'   => 'nullable|string|max:255',
         ]);
+
+        $user = $request->user();
+        $companyId = $user ? $user->company_id : null;
+        $customer = null;
+        $mpesaTransaction = null;
+
+        if (!empty($validated['customer_id']) && $companyId) {
+            $customer = Customer::where('company_id', $companyId)
+                ->with('priceGroup')
+                ->find($validated['customer_id']);
+
+            if (!$customer) {
+                return response()->json([
+                    'message' => 'Sale failed',
+                    'error' => 'Customer not found for this company.',
+                ], 400);
+            }
+        }
 
         DB::beginTransaction();
 
         try {
             $allSaleItems = [];
             $mainItems = $validated['items'];
+
+            $this->validateGroupedPricingForSale($mainItems, $customer, $companyId);
             
-            // Process each item and auto-include empties
+            // Check if user is admin to allow returnable/empty sales
+            $isAdmin = false;
+            if ($user) {
+                $user->load('role');
+                $roleName = strtolower($user->role->name ?? '');
+                $isAdmin = in_array($roleName, ['admin', 'administrator', 'superuser']);
+            }
+            
+            // Process each item and auto-include empties (only for admins)
             foreach ($validated['items'] as $item) {
                 // Add the main product
                 $allSaleItems[] = $item;
                 
-                // Load empties linked to this product
-                $product = Product::with('empties')->findOrFail($item['product_id']);
-                
-                // Auto-add empties to the sale
-                foreach ($product->empties as $empty) {
-                    $emptyQuantity = $item['quantity'] * $empty->pivot->quantity;
+                // Load empties linked to this product - only auto-add for admins
+                if ($isAdmin) {
+                    $product = Product::with('empties')->findOrFail($item['product_id']);
                     
-                    $allSaleItems[] = [
-                        'product_id' => $empty->id,
-                        'quantity' => $emptyQuantity,
-                        'price' => $empty->pivot->deposit_amount, // Use deposit amount as price
-                        'is_empty' => true // Flag to identify empty items
-                    ];
+                    // Auto-add empties to the sale only if admin
+                    foreach ($product->empties as $empty) {
+                        $emptyQuantity = $item['quantity'] * $empty->pivot->quantity;
+                        
+                        $allSaleItems[] = [
+                            'product_id' => $empty->id,
+                            'quantity' => $emptyQuantity,
+                            'price' => $empty->pivot->deposit_amount, // Use deposit amount as price
+                            'is_empty' => true // Flag to identify empty items
+                        ];
+                    }
                 }
             }
             
             // Calculate promotions on main items only
-            $user = $request->user();
             $cartTotal = collect($mainItems)->sum(fn($i) => $i['price'] * $i['quantity']);
             $cartItems = $mainItems; // already in required shape
             $totalDiscount = 0.0;
@@ -102,9 +137,6 @@ class SaleController extends Controller
             $baseAmount = max(0, $grossTotal - $totalDiscount);
 
             // Get authenticated user for company_id and user_id
-            $user = auth()->user();
-            $companyId = $user ? $user->company_id : null;
-
             // Resolve tax configuration scoped to the company (including global defaults)
             $taxConfig = null;
             if (!empty($validated['tax_configuration_id'])) {
@@ -127,7 +159,32 @@ class SaleController extends Controller
             $amountPaid = max(0, $validated['amount_paid'] ?? 0);
             $balanceDue = max(0, $netTotal - $amountPaid);
 
-            $customer = null;
+            if ($this->isMpesaPaymentMethod($validated['payment_method'] ?? 'Cash')) {
+                if ($amountPaid <= 0) {
+                    throw new \Exception('Amount paid must be greater than zero for M-Pesa payments.');
+                }
+
+                if (empty($validated['mpesa_phone_number']) || empty($validated['mpesa_checkout_request_id'])) {
+                    throw new \Exception('Complete the M-Pesa STK payment flow before processing the sale.');
+                }
+
+                $mpesaTransaction = MpesaTransaction::where('company_id', $companyId)
+                    ->where('checkout_request_id', $validated['mpesa_checkout_request_id'])
+                    ->first();
+
+                if (! $mpesaTransaction) {
+                    throw new \Exception('M-Pesa transaction not found for this business.');
+                }
+
+                if ((float) $mpesaTransaction->amount !== (float) $amountPaid) {
+                    throw new \Exception('M-Pesa amount does not match the amount paid. Re-initiate the payment and try again.');
+                }
+
+                if ($mpesaTransaction->status !== 'success') {
+                    throw new \Exception('M-Pesa payment is not yet confirmed. Check payment status before completing the sale.');
+                }
+            }
+
             if ($balanceDue > 0) {
                 // Check if Credit/Invoice payment method is enabled for this company
                 $creditPaymentEnabled = \App\Models\PaymentMethod::whereHas('companies', function($q) use ($companyId) {
@@ -146,7 +203,9 @@ class SaleController extends Controller
                 if (!($validated['apply_credit'] ?? false)) {
                     throw new \Exception('Payment is insufficient. Confirm applying balance as customer credit.');
                 }
-                $customer = Customer::where('company_id', $companyId)->find($customerId);
+                if (!$customer || $customer->id !== (int) $customerId) {
+                    $customer = Customer::where('company_id', $companyId)->with('priceGroup')->find($customerId);
+                }
                 if (!$customer) {
                     throw new \Exception('Customer not found for this company.');
                 }
@@ -168,7 +227,17 @@ class SaleController extends Controller
                 'tax_configuration_id' => $taxConfig?->id,
                 'amount_paid' => $amountPaid,
                 'balance_due' => $balanceDue,
+                'mpesa_transaction_id' => $mpesaTransaction?->id,
+                'mpesa_phone_number' => $validated['mpesa_phone_number'] ?? null,
+                'mpesa_checkout_request_id' => $validated['mpesa_checkout_request_id'] ?? null,
+                'mpesa_receipt_number' => $validated['mpesa_receipt_number'] ?? $mpesaTransaction?->mpesa_receipt_number,
             ]);
+
+            if ($mpesaTransaction) {
+                $mpesaTransaction->update([
+                    'sale_id' => $sale->id,
+                ]);
+            }
 
             // Create credit transaction if balance was added to credit
             if ($balanceDue > 0 && $customer) {
@@ -192,6 +261,7 @@ class SaleController extends Controller
                 SaleItem::create([
                     'sale_id'     => $sale->id,
                     'product_id'  => $item['product_id'],
+                    'uom_id'      => $item['uom_id'] ?? null,
                     'quantity'    => $item['quantity'],
                     'unit_price'  => $item['price'],
                     'total_price' => $item['price'] * $item['quantity'],
@@ -202,11 +272,11 @@ class SaleController extends Controller
                 
                 // Only reduce stock for actual products, not deposit-only empties
                 if (!isset($item['is_empty']) || $item['price'] > 0) {
-                    if ($product->stock_quantity < $item['quantity']) {
+                    $stockUomId = $item['uom_id'] ?? $product->getDefaultSaleUomId();
+                    if (!$product->hasEnoughStockForQuantity((float) $item['quantity'], $stockUomId)) {
                         throw new \Exception("Not enough stock for {$product->name}");
                     }
-                    $product->stock_quantity -= $item['quantity'];
-                    $product->save();
+                    $product->subtractStockForUom((float) $item['quantity'], $stockUomId);
                 }
             }
 
@@ -227,11 +297,53 @@ class SaleController extends Controller
                 }
             }
 
+            // Create invoice record for this sale
+            $invoice = \App\Models\Invoice::create([
+                'type' => 'sale',
+                'company_id' => $companyId,
+                'customer_id' => $validated['customer_id'] ?? null,
+                'user_id' => $user ? $user->id : null,
+                'invoice_number' => \App\Models\Invoice::generateInvoiceNumber(),
+                'invoice_date' => now()->toDateString(),
+                'due_date' => now()->addDays(30)->toDateString(),
+                'subtotal' => $baseAmount,
+                'discount' => $totalDiscount,
+                'tax' => $taxAmount,
+                'total' => $netTotal,
+                'paid_amount' => $amountPaid,
+                'balance' => $balanceDue,
+                'status' => $amountPaid >= $netTotal ? 'paid' : 'sent',
+                'payment_method' => $validated['payment_method'] ?? 'Cash',
+                'mpesa_receipt_number' => $validated['mpesa_receipt_number'] ?? $mpesaTransaction?->mpesa_receipt_number,
+                'mpesa_phone_number' => $validated['mpesa_phone_number'] ?? null,
+                'notes' => 'Auto-generated from POS sale #' . $sale->id
+                    . (($validated['payment_method'] ?? '') === 'M-Pesa' && !empty($validated['mpesa_receipt_number'])
+                        ? ' | M-Pesa Receipt: ' . $validated['mpesa_receipt_number']
+                        : ''),
+            ]);
+
+            // Create invoice items from sale items (only non-empty products)
+            foreach ($sale->saleItems as $saleItem) {
+                $product = $saleItem->product;
+                if (!isset($saleItem->is_empty) || $saleItem->is_empty === false) {
+                    \App\Models\InvoiceItem::create([
+                        'invoice_id' => $invoice->id,
+                        'product_id' => $saleItem->product_id,
+                        'description' => $product ? $product->name : 'Item',
+                        'uom_id' => $saleItem->uom_id,
+                        'quantity' => $saleItem->quantity,
+                        'unit_price' => $saleItem->unit_price,
+                        'total' => $saleItem->total_price,
+                    ]);
+                }
+            }
+
             DB::commit();
 
             return response()->json([
                 'message' => 'Sale recorded successfully',
                 'sale'    => $sale->load('saleItems.product', 'taxConfiguration'),
+                'invoice' => $invoice->fresh()->load('items'),
                 'discount' => $totalDiscount,
                 'tax' => $taxAmount,
                 'applied_promotions' => $appliedPromotions,
@@ -243,6 +355,54 @@ class SaleController extends Controller
                 'message' => 'Sale failed',
                 'error'   => $e->getMessage(),
             ], 400);
+        }
+    }
+
+    private function isMpesaPaymentMethod(?string $paymentMethod): bool
+    {
+        $normalized = strtolower(trim((string) $paymentMethod));
+
+        return in_array($normalized, ['m-pesa', 'mpesa', 'm pesa'], true);
+    }
+
+    private function validateGroupedPricingForSale(array $items, ?Customer $customer, ?int $companyId): void
+    {
+        if (!$customer || !$companyId) {
+            return;
+        }
+
+        PriceGroupService::ensureDefaultsForCompany($companyId);
+
+        $priceGroup = $customer->priceGroup;
+        if (!$priceGroup || PriceGroupService::isRetailDefault($priceGroup)) {
+            return;
+        }
+
+        if (!$priceGroup->is_enabled) {
+            throw new \Exception("{$priceGroup->name} pricing group is disabled for this company. Enable it or reassign the customer.");
+        }
+
+        $productIds = collect($items)->pluck('product_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $products = Product::with('prices')
+            ->where('company_id', $companyId)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $item) {
+            $product = $products->get((int) $item['product_id']);
+            if (!$product) {
+                throw new \Exception('One or more products do not belong to this company.');
+            }
+
+            $hasExplicitPrice = $product->prices->contains(function ($price) use ($priceGroup) {
+                return (int) $price->price_group_id === (int) $priceGroup->id
+                    && $price->uom_id === null;
+            });
+
+            if (!$hasExplicitPrice) {
+                throw new \Exception("{$product->name} has no price set for {$priceGroup->name}. Set a {$priceGroup->name} price before selling to this customer.");
+            }
         }
     }
 

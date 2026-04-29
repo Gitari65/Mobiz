@@ -13,6 +13,7 @@ class UOM extends Model
         'abbreviation',
         'description',
         'is_system',
+        'type',
     ];
 
     protected $casts = [

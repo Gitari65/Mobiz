@@ -18,8 +18,8 @@ return new class extends Migration
 
         // Backfill existing rows to avoid null timestamp issues
         DB::table('promotion_usage')->update([
-            'created_at' => DB::raw('COALESCE(used_at, NOW())'),
-            'updated_at' => DB::raw('COALESCE(used_at, NOW())'),
+            'created_at' => DB::raw('COALESCE(used_at, CURRENT_TIMESTAMP)'),
+            'updated_at' => DB::raw('COALESCE(used_at, CURRENT_TIMESTAMP)'),
         ]);
     }
 

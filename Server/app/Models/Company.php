@@ -31,6 +31,11 @@ class Company extends Model
         return $this->hasMany(User::class);
     }
 
+    public function subscription()
+    {
+        return $this->hasOne(Subscription::class);
+    }
+
     public function paymentMethods()
     {
         return $this->belongsToMany(PaymentMethod::class, 'company_payment_methods')

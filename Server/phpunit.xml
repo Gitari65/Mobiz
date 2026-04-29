@@ -17,6 +17,7 @@
     <php>
         <!-- Use in-memory sqlite for fast, isolated tests -->
         <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:4Ug/VC2g36piBHzR9L5hryYQ2l9xUzxV6uwsLeOsuRE="/>
         <env name="CACHE_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="DB_CONNECTION" value="sqlite"/>

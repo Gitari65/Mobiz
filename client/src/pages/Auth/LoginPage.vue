@@ -313,7 +313,7 @@
 
     <!-- Forgot Password Modal -->
     <transition name="fade">
-      <div v-if="forgotPasswordModal.active" class="forgot-backdrop" @click.self="closeForgotPasswordModal">
+      <div v-if="forgotPasswordModal.active" class="forgot-backdrop">
         <div class="forgot-modal">
           <button @click="closeForgotPasswordModal" class="forgot-close">
             <i class="fas fa-times"></i>
@@ -413,6 +413,87 @@
         </div>
       </div>
     </transition>
+
+    <!-- Forced Password Reset Modal (after temporary password) -->
+    <transition name="fade">
+      <div v-if="forcedPasswordReset.active" class="forced-password-backdrop">
+        <div class="forced-password-modal">
+          <div class="forced-password-header">
+            <div class="forced-password-icon">
+              <i class="fas fa-lock-open"></i>
+            </div>
+            <h2>Set Your New Password</h2>
+            <p class="forced-password-subtitle">For security, please create a new password</p>
+          </div>
+
+          <div class="forced-password-body">
+            <p class="forced-password-message">
+              A temporary password was sent to you. Please set a permanent password to continue.
+            </p>
+
+            <div class="form-group">
+              <label>New Password</label>
+              <div class="password-wrapper">
+                <input
+                  v-model="forcedPasswordReset.password"
+                  :type="forcedPasswordReset.showPassword ? 'text' : 'password'"
+                  placeholder="At least 8 characters"
+                  class="forced-password-input"
+                />
+                <button
+                  @click="forcedPasswordReset.showPassword = !forcedPasswordReset.showPassword"
+                  type="button"
+                  class="password-toggle"
+                >
+                  <i :class="forcedPasswordReset.showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Confirm Password</label>
+              <div class="password-wrapper">
+                <input
+                  v-model="forcedPasswordReset.passwordConfirm"
+                  :type="forcedPasswordReset.showPasswordConfirm ? 'text' : 'password'"
+                  placeholder="Confirm your password"
+                  class="forced-password-input"
+                />
+                <button
+                  @click="forcedPasswordReset.showPasswordConfirm = !forcedPasswordReset.showPasswordConfirm"
+                  type="button"
+                  class="password-toggle"
+                >
+                  <i :class="forcedPasswordReset.showPasswordConfirm ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+                </button>
+              </div>
+            </div>
+
+            <p v-if="forcedPasswordReset.error" class="error-text">
+              <i class="fas fa-exclamation-circle"></i>
+              {{ forcedPasswordReset.error }}
+            </p>
+
+            <button 
+              @click="submitForcedPasswordReset" 
+              :disabled="forcedPasswordReset.loading || !forcedPasswordReset.password || !forcedPasswordReset.passwordConfirm"
+              class="forced-password-button primary"
+            >
+              <span v-if="forcedPasswordReset.loading" class="btn-spinner"></span>
+              <i v-else class="fas fa-check"></i>
+              {{ forcedPasswordReset.loading ? 'Setting Password...' : 'Set New Password' }}
+            </button>
+          </div>
+
+          <div class="forced-password-footer">
+            <p class="forced-password-help">
+              <i class="fas fa-info-circle"></i>
+              Password must be at least 8 characters long
+            </p>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -429,6 +510,19 @@ const router = useRouter()
 // Reactive state
 const isLoading = ref(false)
 const showPassword = ref(false)
+
+// Progress tracking for login flow
+const progressTracker = reactive({
+  step: 0, // 0: initial, 1: login, 2: otp, 3: password-reset, 4: complete
+  message: '',
+  isVisible: false,
+  steps: [
+    { number: 1, label: 'Sign In', icon: 'fas fa-sign-in-alt' },
+    { number: 2, label: 'Verify', icon: 'fas fa-shield-alt' },
+    { number: 3, label: 'Update Password', icon: 'fas fa-lock' },
+    { number: 4, label: 'Complete', icon: 'fas fa-check' }
+  ]
+})
 
 const forgotPasswordModal = reactive({
   active: false,
@@ -460,7 +554,18 @@ const otpStep = reactive({
 const pendingSession = reactive({
   userData: null,
   role: '',
-  redirectPath: '/'
+  redirectPath: '/',
+  token: ''
+})
+
+const forcedPasswordReset = reactive({
+  active: false,
+  password: '',
+  passwordConfirm: '',
+  showPassword: false,
+  showPasswordConfirm: false,
+  loading: false,
+  error: ''
 })
 
 const loginForm = reactive({
@@ -487,6 +592,16 @@ const clearErrors = () => {
   errors.email = ''
   errors.password = ''
   errors.general = ''
+}
+
+const updateProgress = (step, message) => {
+  progressTracker.step = step
+  progressTracker.message = message
+  progressTracker.isVisible = true
+}
+
+const hideProgress = () => {
+  progressTracker.isVisible = false
 }
 
 const showAlert = (type, message, details = '') => {
@@ -536,6 +651,7 @@ const validateForm = () => {
 }
 
 const setAuthenticationState = (user, token) => {
+  localStorage.removeItem('companySubscriptionFeaturesCache')
   localStorage.setItem('authToken', token)
   localStorage.setItem('isLoggedIn', 'true')
   localStorage.setItem('userData', JSON.stringify(user))
@@ -596,6 +712,7 @@ const handleLogin = async () => {
 
   isLoading.value = true
   clearErrors()
+  updateProgress(1, 'Signing in...')
 
   try {
     const res = await fetch('http://localhost:8000/login', {
@@ -612,25 +729,32 @@ const handleLogin = async () => {
       data = await res.json()
     } catch (parseErr) {
       console.error('Failed to parse login response as JSON', parseErr)
+      updateProgress(0, '')
+      hideProgress()
       showAlert('error', 'Unexpected server response.', 'Please check your connection and try again.')
       return
     }
 
     if (res.ok && data.user) {
+      updateProgress(1, 'Sign in successful!')
       startOtpFlow(data)
     } else {
       // Handle specific error scenarios
+      updateProgress(0, '')
+      hideProgress()
       if (res.status === 401) {
         if (data.error === 'User not found.') {
           showAlert(
             'error',
-            'User not found.',
-            `No account exists for "${loginForm.email}". Please check the email or try demo credentials below.`
+            'Wrong Email',
+            `No account exists for "${loginForm.email}". Please check that the email is correct, or create a new account.`
           )
+          errors.email = 'This email is not in our database'
         } else if (data.error === 'Password is incorrect.') {
-          showAlert('error', 'Invalid password.', 'The password you entered is incorrect. Please try again.')
+          showAlert('error', 'Invalid Password', 'The password you entered is incorrect. Please try again.')
+          errors.password = 'Incorrect password'
         } else {
-          showAlert('error', 'Login failed.', data.error || 'Invalid credentials.')
+          showAlert('error', 'Login Failed', data.error || 'Invalid credentials.')
         }
       } else if (res.status === 403) {
         showAlert(
@@ -647,6 +771,8 @@ const handleLogin = async () => {
     }
   } catch (error) {
     console.error('Login error:', error)
+    updateProgress(0, '')
+    hideProgress()
     showAlert(
       'error',
       'Connection error.',
@@ -658,6 +784,8 @@ const handleLogin = async () => {
 }
 
 const startOtpFlow = (data) => {
+  updateProgress(2, 'Verification code sent to your email...')
+  
   const role = data.role || (data.user?.role?.name || '')
   pendingSession.userData = {
     id: data.user.id,
@@ -691,9 +819,9 @@ const startOtpFlow = (data) => {
     showAlert('success', 'Account Created! Verify Email', otpMessage)
   } else {
     const otpMessage = data?.otp?.sent
-      ? `An OTP has been sent to ${otpStep.destination}.`
+      ? `An OTP has been sent to ${otpStep.destination}. Enter it below to continue.`
       : 'Enter the OTP to continue.'
-    showAlert('success', 'Login successful!', otpMessage)
+    showAlert('success', 'Check Your Email!', otpMessage)
   }
 }
 
@@ -705,6 +833,7 @@ const verifyOtp = async () => {
 
   otpStep.isVerifying = true
   otpStep.error = ''
+  updateProgress(2, 'Verifying your code...')
 
   try {
     const res = await fetch('http://localhost:8000/login/verify-otp', {
@@ -722,13 +851,21 @@ const verifyOtp = async () => {
     } catch (parseErr) {
       console.error('Failed to parse OTP verify response', parseErr)
       otpStep.error = 'Unexpected server response.'
+      hideProgress()
       return
     }
 
     if (res.ok && data.user) {
+      updateProgress(2, 'Code verified successfully!')
+      
       const token = data.token || data.plainTextToken || ''
+      
+      // Store token and configure axios FIRST
       if (token) {
+        localStorage.removeItem('companySubscriptionFeaturesCache')
         localStorage.setItem('authToken', token)
+        pendingSession.token = token
+        // Configure axios for all future requests
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
       }
 
@@ -745,16 +882,37 @@ const verifyOtp = async () => {
       }
 
       otpStep.active = false
-      showAlert('success', 'OTP verified!', 'Redirecting to your dashboard...')
-
-      setTimeout(() => {
-        router.replace(pendingSession.redirectPath)
-      }, 800)
+      
+      // Check if user must change password
+      if (data.user.must_change_password) {
+        showForcedPasswordResetModal()
+        showAlert('warning', 'Set Your New Password', 'For security, please create a new permanent password before continuing.')
+      } else {
+        updateProgress(4, 'Authentication successful!')
+        showAlert('success', 'Welcome Back!', 'Redirecting to your dashboard...')
+        
+        setTimeout(() => {
+          hideProgress()
+          router.replace(pendingSession.redirectPath)
+        }, 800)
+      }
     } else {
-      otpStep.error = data?.error || 'Invalid or expired code. Please try again.'
+      updateProgress(0, '')
+      hideProgress()
+      
+      // Check for specific error conditions
+      if (res.status === 404 || data?.error?.includes('not found')) {
+        otpStep.error = 'Wrong Email - No account found with this email address.'
+      } else if (res.status === 401) {
+        otpStep.error = 'Invalid or expired code. Please try again.'
+      } else {
+        otpStep.error = data?.error || 'Invalid or expired code. Please try again.'
+      }
     }
   } catch (error) {
     console.error('OTP verification error:', error)
+    updateProgress(0, '')
+    hideProgress()
     otpStep.error = 'Unable to verify code. Check your connection and try again.'
   } finally {
     otpStep.isVerifying = false
@@ -865,7 +1023,11 @@ const requestPasswordReset = async () => {
       forgotPasswordModal.destination = data.destination || 'your email'
       showAlert('success', 'Reset Code Sent', `Check your email for the reset code.`)
     } else {
-      forgotPasswordModal.error = data?.error || 'Failed to send reset code. Try again later.'
+      if (res.status === 404 || data?.error?.includes('not found')) {
+        forgotPasswordModal.error = 'Wrong Email - No account exists with this email address.'
+      } else {
+        forgotPasswordModal.error = data?.error || 'Failed to send reset code. Try again later.'
+      }
     }
   } catch (error) {
     console.error('Forgot password error:', error)
@@ -940,6 +1102,93 @@ const resetPassword = async () => {
     forgotPasswordModal.error = 'Unable to reset password. Check your connection and try again.'
   } finally {
     forgotPasswordModal.loading = false
+  }
+}
+
+// Forced Password Reset Functions (after temporary password)
+const showForcedPasswordResetModal = () => {
+  forcedPasswordReset.active = true
+  forcedPasswordReset.password = ''
+  forcedPasswordReset.passwordConfirm = ''
+  forcedPasswordReset.error = ''
+  forcedPasswordReset.loading = false
+  forcedPasswordReset.showPassword = false
+  forcedPasswordReset.showPasswordConfirm = false
+}
+
+const closeForcedPasswordResetModal = () => {
+  forcedPasswordReset.active = false
+  forcedPasswordReset.password = ''
+  forcedPasswordReset.passwordConfirm = ''
+  forcedPasswordReset.error = ''
+}
+
+const submitForcedPasswordReset = async () => {
+  forcedPasswordReset.error = ''
+
+  if (!forcedPasswordReset.password) {
+    forcedPasswordReset.error = 'Please enter a new password'
+    return
+  }
+
+  if (forcedPasswordReset.password.length < 8) {
+    forcedPasswordReset.error = 'Password must be at least 8 characters'
+    return
+  }
+
+  if (!forcedPasswordReset.passwordConfirm) {
+    forcedPasswordReset.error = 'Please confirm your password'
+    return
+  }
+
+  if (forcedPasswordReset.password !== forcedPasswordReset.passwordConfirm) {
+    forcedPasswordReset.error = 'Passwords do not match'
+    return
+  }
+
+  forcedPasswordReset.loading = true
+
+  try {
+    // Ensure we have a valid token
+    const token = localStorage.getItem('authToken') || pendingSession.token
+    
+    if (!token) {
+      forcedPasswordReset.error = 'Authentication token not found. Please try logging in again.'
+      forcedPasswordReset.loading = false
+      return
+    }
+
+    // Use axios which has Authorization header configured
+    const response = await axios.post('/change-password', {
+      password: forcedPasswordReset.password,
+      password_confirmation: forcedPasswordReset.passwordConfirm
+    })
+
+    if (response.status === 200 || response.status === 201) {
+      closeForcedPasswordResetModal()
+      showAlert('success', 'Password Updated!', 'Your password has been successfully set. Please login again with your new password.')
+      
+      // Clear session and redirect to login
+      setTimeout(() => {
+        localStorage.removeItem('authToken')
+        localStorage.removeItem('isLoggedIn')
+        loginForm.email = ''
+        loginForm.password = ''
+        router.replace('/login')
+      }, 2000)
+    }
+  } catch (error) {
+    console.error('Password change error:', error)
+    
+    if (error.response?.status === 401) {
+      forcedPasswordReset.error = 'Unauthorized. Your session may have expired. Please try logging in again.'
+    } else if (error.response?.status === 422) {
+      forcedPasswordReset.error = error.response.data?.error || 'Invalid password. Please try again.'
+    } else {
+      forcedPasswordReset.error = error.response?.data?.error || error.response?.data?.message || 'Failed to reset password. Please try again.'
+    }
+  } finally {
+    forcedPasswordReset.loading = false
   }
 }
 
@@ -1194,16 +1443,16 @@ onMounted(() => {
   z-index: 10;
   width: 100%;
   max-width: 440px;
-  padding: 20px;
+  padding: 12px;
 }
 
 .login-card {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
-  border-radius: 24px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15),
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12),
               0 0 0 1px rgba(255, 255, 255, 0.2);
-  padding: 48px;
+  padding: 28px 24px;
   position: relative;
   overflow: hidden;
   animation: cardSlideIn 0.8s ease-out;
@@ -1233,13 +1482,13 @@ onMounted(() => {
 /* Brand Section */
 .brand-section {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 20px;
 }
 
 .brand-logo-wrapper {
   position: relative;
   display: inline-block;
-  margin-bottom: 24px;
+  margin-bottom: 10px;
 }
 
 .brand-logo {
@@ -1247,13 +1496,13 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 80px;
-  height: 80px;
+  width: 56px;
+  height: 56px;
   background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   border-radius: 50%;
-  font-size: 32px;
-  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
+  font-size: 22px;
+  box-shadow: 0 6px 24px rgba(102, 126, 234, 0.3);
   animation: logoFloat 3s ease-in-out infinite;
 }
 
@@ -1321,13 +1570,13 @@ onMounted(() => {
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .input-wrapper {
@@ -1347,10 +1596,10 @@ onMounted(() => {
 
 .form-input {
   width: 100%;
-  padding: 16px 48px 16px 48px;
+  padding: 11px 36px;
   border: 2px solid #e5e7eb;
-  border-radius: 16px;
-  font-size: 16px;
+  border-radius: 11px;
+  font-size: 14px;
   background: rgba(255, 255, 255, 0.8);
   transition: all 0.3s ease;
   outline: none;
@@ -1557,15 +1806,16 @@ onMounted(() => {
   background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
   border: none;
-  padding: 16px 32px;
-  border-radius: 16px;
-  font-size: 16px;
+  padding: 11px 24px;
+  border-radius: 11px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-top: 8px;
+  margin-top: 4px;
   overflow: hidden;
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.25);
+  width: 100%;
 }
 
 .login-button:hover:not(:disabled) {
@@ -1630,9 +1880,10 @@ onMounted(() => {
 
 /* Divider */
 .divider {
-  margin: 32px 0;
+  margin: 12px 0;
   position: relative;
   text-align: center;
+  display: none;
 }
 
 .divider::before {
@@ -1648,28 +1899,28 @@ onMounted(() => {
 .divider-text {
   background: rgba(255, 255, 255, 0.95);
   color: #9ca3af;
-  padding: 0 20px;
-  font-size: 14px;
+  padding: 0 14px;
+  font-size: 12px;
   font-weight: 500;
 }
 
 /* Social Login */
 .social-login {
-  display: flex;
+  display: none;
   justify-content: center;
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .social-button {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border: 2px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.8);
   color: #6b7280;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -1698,12 +1949,13 @@ onMounted(() => {
 
 /* Footer */
 .login-footer {
+  margin-top: 12px;
   text-align: center;
 }
 
 .footer-text {
+  font-size: 12px;
   color: #6b7280;
-  font-size: 14px;
   margin: 0;
 }
 
@@ -2153,6 +2405,720 @@ onMounted(() => {
 
   .forgot-modal h2 {
     font-size: 20px;
+  }
+}
+
+/* Forced Password Reset Modal Styles */
+.forced-password-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  backdrop-filter: blur(4px);
+}
+
+.forced-password-modal {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafb 100%);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 40px rgba(102, 126, 234, 0.1);
+  padding: 40px;
+  max-width: 420px;
+  width: 90%;
+  animation: slideUp 0.4s cubic-bezier(0.23, 1, 0.320, 1);
+  position: relative;
+  border: 1px solid rgba(102, 126, 234, 0.1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.forced-password-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.forced-password-icon {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  font-size: 28px;
+  color: white;
+  animation: bounceIn 0.6s cubic-bezier(0.23, 1, 0.320, 1);
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.forced-password-modal h2 {
+  color: #1f2937;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+}
+
+.forced-password-subtitle {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0;
+  font-weight: 500;
+}
+
+.forced-password-message {
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+  background: rgba(102, 126, 234, 0.05);
+  padding: 12px 16px;
+  border-radius: 10px;
+  border-left: 3px solid #667eea;
+}
+
+.forced-password-body {
+  margin-bottom: 24px;
+}
+
+.forced-password-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 14px;
+  background: #f9fafb;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.forced-password-input:focus {
+  outline: none;
+  border-color: #667eea;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.forced-password-button {
+  width: 100%;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  margin-top: 20px;
+}
+
+.forced-password-button.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.forced-password-button.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+.forced-password-button.primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.forced-password-button i {
+  font-size: 16px;
+}
+
+.forced-password-footer {
+  text-align: center;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.forced-password-help {
+  color: #9ca3af;
+  font-size: 13px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.forced-password-help i {
+  color: #667eea;
+}
+
+@media (max-width: 640px) {
+  .forced-password-modal {
+    padding: 24px;
+    max-width: calc(100% - 32px);
+  }
+
+  .forced-password-modal h2 {
+    font-size: 20px;
+  }
+
+  .forced-password-icon {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+}
+
+/* Comprehensive Responsive Optimization */
+@media (max-width: 768px) {
+  .login-container {
+    max-width: 100%;
+    padding: 10px;
+  }
+
+  .login-card {
+    padding: 24px 20px;
+    border-radius: 16px;
+  }
+
+  .brand-section {
+    margin-bottom: 16px;
+  }
+
+  .brand-logo-wrapper {
+    margin-bottom: 8px;
+  }
+
+  .brand-logo {
+    width: 52px;
+    height: 52px;
+    font-size: 20px;
+  }
+
+  .login-title {
+    font-size: 20px;
+    margin-bottom: 4px;
+  }
+
+  .login-subtitle {
+    font-size: 12px;
+  }
+
+  .login-form {
+    gap: 10px;
+  }
+
+  .form-group {
+    gap: 3px;
+  }
+
+  .form-input {
+    padding: 10px 34px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  .floating-label {
+    font-size: 13px;
+  }
+
+  .form-options {
+    gap: 6px;
+    margin: 3px 0;
+  }
+
+  .checkbox-wrapper {
+    gap: 8px;
+  }
+
+  .forgot-link {
+    font-size: 12px;
+  }
+
+  .login-button {
+    padding: 10px 20px;
+    font-size: 13px;
+    border-radius: 10px;
+    margin-top: 2px;
+  }
+
+  .login-footer {
+    margin-top: 10px;
+  }
+
+  .footer-text {
+    font-size: 11px;
+  }
+
+  .version-info {
+    margin-top: 8px;
+    font-size: 9px;
+  }
+
+  .divider {
+    margin: 10px 0;
+  }
+
+  .otp-modal {
+    padding: 20px;
+    width: min(350px, 90vw);
+  }
+
+  .otp-modal h2 {
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+
+  .otp-input {
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  .otp-button {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .forgot-modal {
+    padding: 24px;
+    max-width: 100%;
+    margin: 16px;
+  }
+
+  .forgot-modal h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+
+  .forgot-input {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  .forgot-button {
+    padding: 10px 20px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  .forced-password-modal {
+    padding: 28px 20px;
+    max-width: 90%;
+    border-radius: 16px;
+  }
+
+  .forced-password-modal h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+
+  .forced-password-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+  }
+
+  .forced-password-input {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  .forced-password-button {
+    padding: 10px 20px;
+    font-size: 13px;
+    border-radius: 10px;
+    margin-top: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    justify-content: flex-start;
+    padding-top: 30px;
+    min-height: auto;
+  }
+
+  .login-container {
+    max-width: 100%;
+    padding: 8px;
+  }
+
+  .login-card {
+    padding: 20px 16px;
+    border-radius: 14px;
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  .brand-section {
+    margin-bottom: 12px;
+  }
+
+  .brand-logo-wrapper {
+    margin-bottom: 6px;
+  }
+
+  .brand-logo {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+  }
+
+  .logo-pulse {
+    top: -6px;
+    left: -6px;
+    right: -6px;
+    bottom: -6px;
+  }
+
+  .mobiz-title {
+    display: none;
+  }
+
+  .login-title {
+    font-size: 18px;
+    margin-bottom: 2px;
+  }
+
+  .login-subtitle {
+    font-size: 11px;
+  }
+
+  .login-form {
+    gap: 8px;
+  }
+
+  .form-group {
+    gap: 2px;
+  }
+
+  .form-input {
+    padding: 10px 32px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+
+  .floating-label {
+    font-size: 12px;
+    left: 36px;
+  }
+
+  .input-icon {
+    font-size: 14px;
+    left: 12px;
+  }
+
+  .password-toggle {
+    right: 12px;
+    font-size: 14px;
+  }
+
+  .form-options {
+    flex-wrap: wrap;
+    margin: 2px 0;
+    gap: 4px;
+  }
+
+  .checkbox-wrapper {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .checkbox-custom {
+    width: 18px;
+    height: 18px;
+  }
+
+  .forgot-link {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .login-button {
+    padding: 10px 18px;
+    font-size: 12px;
+    border-radius: 9px;
+    margin-top: 2px;
+  }
+
+  .button-content {
+    gap: 4px;
+  }
+
+  .loading-spinner {
+    width: 14px;
+    height: 14px;
+  }
+
+  .spinner-ring {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .divider {
+    margin: 8px 0;
+  }
+
+  .login-footer {
+    margin-top: 8px;
+  }
+
+  .footer-text {
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .signup-link {
+    font-size: 10px;
+  }
+
+  .version-info {
+    margin-top: 6px;
+    font-size: 9px;
+  }
+
+  .otp-backdrop {
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .otp-modal {
+    padding: 16px;
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .otp-modal h2 {
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  .otp-subtitle {
+    font-size: 11px;
+  }
+
+  .otp-message {
+    font-size: 12px;
+  }
+
+  .otp-input-group {
+    margin: 12px 0;
+  }
+
+  .otp-input {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .otp-button {
+    padding: 10px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+
+  .otp-footer {
+    margin-top: 12px;
+  }
+
+  .otp-help,
+  .otp-resend-section {
+    font-size: 11px;
+  }
+
+  .forgot-backdrop {
+    align-items: flex-end;
+  }
+
+  .forgot-modal {
+    padding: 20px 16px;
+    max-width: 100%;
+    border-radius: 12px 12px 0 0;
+    margin: 0;
+  }
+
+  .forgot-modal h2 {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+
+  .forgot-description {
+    font-size: 12px;
+  }
+
+  .forgot-input {
+    padding: 10px 12px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+
+  .password-wrapper {
+    position: relative;
+  }
+
+  .forgot-button {
+    padding: 10px 18px;
+    font-size: 12px;
+    border-radius: 9px;
+    margin-top: 8px;
+  }
+
+  .forgot-footer {
+    margin-top: 10px;
+    font-size: 11px;
+  }
+
+  .back-link {
+    font-size: 11px;
+  }
+
+  .forced-password-backdrop {
+    align-items: flex-end;
+  }
+
+  .forced-password-modal {
+    padding: 20px 16px;
+    max-width: 100%;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .forced-password-header {
+    margin-bottom: 20px;
+  }
+
+  .forced-password-modal h2 {
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  .forced-password-subtitle {
+    font-size: 11px;
+  }
+
+  .forced-password-message {
+    font-size: 11px;
+    padding: 10px 12px;
+  }
+
+  .forced-password-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+
+  .forced-password-body {
+    margin-bottom: 16px;
+  }
+
+  .form-group label {
+    font-size: 12px;
+  }
+
+  .forced-password-input {
+    padding: 10px 12px;
+    font-size: 12px;
+    border-radius: 9px;
+  }
+
+  .forced-password-button {
+    padding: 10px 18px;
+    font-size: 12px;
+    border-radius: 9px;
+    margin-top: 12px;
+    width: 100%;
+  }
+
+  .forced-password-help {
+    font-size: 10px;
+    padding-top: 12px;
+  }
+}
+
+@media (max-height: 600px) and (orientation: landscape) {
+  .login-page {
+    min-height: auto;
+    padding: 10px 0;
+  }
+
+  .login-container {
+    padding: 8px;
+  }
+
+  .login-card {
+    padding: 16px;
+  }
+
+  .brand-section {
+    margin-bottom: 8px;
+  }
+
+  .brand-logo {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .login-title {
+    font-size: 16px;
+    margin-bottom: 2px;
+  }
+
+  .login-form {
+    gap: 8px;
+  }
+
+  .form-input {
+    padding: 9px 32px;
+    font-size: 13px;
+  }
+
+  .login-button {
+    padding: 9px 18px;
+    font-size: 12px;
+  }
+
+  .login-footer {
+    margin-top: 8px;
+  }
+
+  .footer-text {
+    font-size: 10px;
   }
 }
 </style>

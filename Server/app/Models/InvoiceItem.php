@@ -9,16 +9,17 @@ class InvoiceItem extends Model
     protected $fillable = [
         'invoice_id',
         'product_id',
+        'uom_id',
         'description',
         'quantity',
         'unit_price',
-        'total_price',
+        'total',
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
+        'quantity' => 'decimal:4',
         'unit_price' => 'decimal:2',
-        'total_price' => 'decimal:2',
+        'total' => 'decimal:2',
     ];
 
     public function invoice()
@@ -29,5 +30,10 @@ class InvoiceItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function uom()
+    {
+        return $this->belongsTo(UOM::class);
     }
 }

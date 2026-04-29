@@ -7,7 +7,7 @@ use App\Models\TaxConfiguration;
 
 class Sale extends Model
 {
-    protected $fillable = ['total', 'company_id', 'customer_id', 'user_id', 'payment_method', 'discount', 'tax', 'tax_configuration_id', 'amount_paid', 'balance_due'];
+    protected $fillable = ['total', 'company_id', 'customer_id', 'user_id', 'payment_method', 'discount', 'tax', 'tax_configuration_id', 'amount_paid', 'balance_due', 'mpesa_transaction_id', 'mpesa_phone_number', 'mpesa_checkout_request_id', 'mpesa_receipt_number'];
 
     protected $casts = [
         'total' => 'decimal:2',
@@ -45,6 +45,11 @@ class Sale extends Model
     public function taxConfiguration()
     {
         return $this->belongsTo(TaxConfiguration::class);
+    }
+
+    public function mpesaTransaction()
+    {
+        return $this->belongsTo(MpesaTransaction::class);
     }
 }
 

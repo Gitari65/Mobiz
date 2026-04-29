@@ -6,18 +6,29 @@
         <div class="error-code">403</div>
         <h1 class="error-title">Access Denied</h1>
         <p class="error-description">
-          You don't have permission to access this resource.
+          {{ descriptionText }}
         </p>
+
+        <div v-if="isSubscriptionBlock" class="reason-card">
+          <p><strong>Required feature:</strong> {{ featureLabel }}</p>
+          <p class="reason-note">Your current subscription package does not include this module.</p>
+        </div>
 
         <div class="error-illustration">
           <i class="fas fa-lock"></i>
         </div>
 
         <div class="action-buttons">
+          <router-link v-if="isSubscriptionBlock && isAdmin" to="/company-profile" class="btn btn-accent">
+            <i class="fas fa-credit-card"></i>
+            Manage Subscription
+          </router-link>
+
           <router-link to="/" class="btn btn-primary">
             <i class="fas fa-home"></i>
             Go to Dashboard
           </router-link>
+
           <button @click="goBack" class="btn btn-secondary">
             <i class="fas fa-arrow-left"></i>
             Go Back
@@ -29,9 +40,39 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
+const route = useRoute()
 const router = useRouter()
+
+const role = computed(() => {
+  try {
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}')
+    return String(userData?.role?.name || '').toLowerCase()
+  } catch (_e) {
+    return ''
+  }
+})
+
+const isAdmin = computed(() => ['admin', 'administrator'].includes(role.value))
+const reason = computed(() => String(route.query.reason || ''))
+const featureLabel = computed(() => String(route.query.feature_label || route.query.feature || 'This module'))
+
+const isSubscriptionBlock = computed(() => reason.value === 'subscription_feature' || reason.value === 'subscription_feature_check_failed')
+
+const descriptionText = computed(() => {
+  if (reason.value === 'subscription_feature') {
+    return `Your current subscription does not include ${featureLabel.value}.`
+  }
+  if (reason.value === 'subscription_feature_check_failed') {
+    return 'We could not verify your subscription access for this module right now.'
+  }
+  if (reason.value === 'role_required' || reason.value === 'role_excluded') {
+    return "Your account role does not have permission to access this resource."
+  }
+  return "You don't have permission to access this resource."
+})
 
 const goBack = () => {
   router.back()
@@ -88,6 +129,26 @@ const goBack = () => {
   line-height: 1.6;
 }
 
+.reason-card {
+  margin: 0 auto 20px;
+  max-width: 420px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #9a3412;
+  text-align: left;
+}
+
+.reason-card p {
+  margin: 0;
+}
+
+.reason-note {
+  font-size: 14px;
+  margin-top: 6px !important;
+}
+
 .error-illustration {
   margin: 32px 0;
   font-size: 64px;
@@ -120,6 +181,17 @@ const goBack = () => {
   background: linear-gradient(135deg, #e94057, #f27121);
   color: white;
   box-shadow: 0 8px 25px rgba(233, 64, 87, 0.3);
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+  color: white;
+  box-shadow: 0 8px 25px rgba(37, 99, 235, 0.3);
+}
+
+.btn-accent:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 35px rgba(37, 99, 235, 0.4);
 }
 
 .btn-primary:hover {

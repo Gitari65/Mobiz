@@ -5,8 +5,17 @@
 
 import axios from 'axios' // added
 
-// Use backend base URL (no extra /api prefix)
-const BASE_URL = 'http://127.0.0.1:8000'
+// Use backend base URL - dynamically detect for development
+const BASE_URL = (() => {
+  // In development, use the current host's origin with backend port
+  if (import.meta.env.DEV) {
+    const protocol = window.location.protocol
+    const hostname = window.location.hostname // uses localhost or 127.0.0.1 as accessed
+    return `${protocol}//${hostname}:8000`
+  }
+  // In production, use configured URL
+  return import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+})()
 
 // Default headers for all requests
 const defaultHeaders = {
@@ -376,14 +385,107 @@ const axiosInstance = axios.create({
   headers: defaultHeaders
 })
 
+// Shared in-memory GET cache (URL+params key)
+const getCacheStore = new Map()
+
+const buildCacheKey = (endpoint, params = {}) => {
+  const search = new URLSearchParams()
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      search.append(key, String(value))
+    }
+  })
+  const serializedParams = search.toString()
+  return serializedParams ? `${endpoint}?${serializedParams}` : endpoint
+}
+
+export const invalidateApiCache = (prefix = '') => {
+  if (!prefix) {
+    getCacheStore.clear()
+    return
+  }
+
+  for (const key of getCacheStore.keys()) {
+    if (key.startsWith(prefix)) {
+      getCacheStore.delete(key)
+    }
+  }
+}
+
+export const cachedGet = async (endpoint, {
+  params = {},
+  ttlMs = 60 * 1000,
+  forceRefresh = false,
+  cacheKey,
+  axiosConfig = {}
+} = {}) => {
+  const resolvedKey = cacheKey || buildCacheKey(endpoint, params)
+  const now = Date.now()
+
+  if (!forceRefresh) {
+    const cached = getCacheStore.get(resolvedKey)
+    if (cached && cached.expiresAt > now) {
+      return cached.data
+    }
+  }
+
+  const response = await axios.get(endpoint, {
+    params,
+    ...axiosConfig
+  })
+
+  getCacheStore.set(resolvedKey, {
+    data: response.data,
+    expiresAt: now + Math.max(0, Number(ttlMs) || 0)
+  })
+
+  return response.data
+}
+
+const isDev = Boolean(import.meta.env?.DEV)
+
+const logAxiosTiming = (config, response, error) => {
+  const startedAt = config?.metadata?.startedAt
+  if (!startedAt) return
+
+  const durationMs = Date.now() - startedAt
+  const method = String(config?.method || 'GET').toUpperCase()
+  const endpoint = config?.url || 'unknown-url'
+  const serverDuration = response?.headers?.['x-request-duration-ms']
+  const status = response?.status || error?.response?.status || 'ERR'
+
+  if (isDev || durationMs >= 800) {
+    console.log('[HTTP TIMING]', {
+      method,
+      endpoint,
+      status,
+      client_ms: durationMs,
+      server_ms: serverDuration ? Number(serverDuration) : null,
+    })
+  }
+}
+
 // Add interceptor to include auth token
 axiosInstance.interceptors.request.use((config) => {
+  config.metadata = {
+    ...(config.metadata || {}),
+    startedAt: Date.now(),
+  }
+
   const token = localStorage.getItem('authToken')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 }, (error) => {
+  return Promise.reject(error)
+})
+
+axiosInstance.interceptors.response.use((response) => {
+  logAxiosTiming(response.config, response, null)
+  return response
+}, (error) => {
+  logAxiosTiming(error?.config, null, error)
   return Promise.reject(error)
 })
 

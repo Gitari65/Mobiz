@@ -166,20 +166,31 @@ class ChatController extends Controller
     // GET /api/super/chats/unread-count - get unread message count
     public function unreadCount()
     {
-        $userId = auth()->id();
-        $cacheKey = 'unread_count_user_' . $userId;
-        $count = \Cache::remember($cacheKey, now()->addSeconds(15), function () use ($userId) {
-            return ChatMessage::whereHas('chat', function ($q) use ($userId) {
-                $q->where(function ($subQ) use ($userId) {
-                    $subQ->where('initiator_id', $userId)
-                          ->orWhere('recipient_id', $userId);
-                });
-            })
-            ->where('sender_id', '!=', $userId)
-            ->where('is_read', false)
-            ->count();
-        });
-        return response()->json(['unread_count' => $count]);
+        try {
+            $userId = auth()->id();
+            
+            if (!$userId) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+            
+            $cacheKey = 'unread_count_user_' . $userId;
+            $count = \Cache::remember($cacheKey, now()->addSeconds(15), function () use ($userId) {
+                return ChatMessage::whereHas('chat', function ($q) use ($userId) {
+                    $q->where(function ($subQ) use ($userId) {
+                        $subQ->where('initiator_id', $userId)
+                              ->orWhere('recipient_id', $userId);
+                    });
+                })
+                ->where('sender_id', '!=', $userId)
+                ->where('is_read', false)
+                ->count();
+            });
+            
+            return response()->json(['unread_count' => $count, 'success' => true]);
+        } catch (\Exception $e) {
+            \Log::error('Unread count error', ['error' => $e->getMessage(), 'user_id' => auth()->id()]);
+            return response()->json(['error' => 'Failed to fetch unread count', 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**

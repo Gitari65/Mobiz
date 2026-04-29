@@ -7,6 +7,10 @@ use App\Observers\ModelActivityObserver;
 use App\Models\User;
 use App\Models\Company;
 use App\Models\Product;
+use App\Models\Sale;
+use App\Models\Invoice;
+use App\Models\Expense;
+use App\Models\CreditTransaction;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,6 +31,10 @@ class AppServiceProvider extends ServiceProvider
         User::observe(ModelActivityObserver::class);
         Company::observe(ModelActivityObserver::class);
         Product::observe(ModelActivityObserver::class);
+        Sale::observe(ModelActivityObserver::class);
+        Invoice::observe(ModelActivityObserver::class);
+        Expense::observe(ModelActivityObserver::class);
+        CreditTransaction::observe(ModelActivityObserver::class);
 
         // Prevent running destructive DB artisan commands on production by mistake
         if ($this->app->runningInConsole()) {

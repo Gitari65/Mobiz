@@ -227,7 +227,7 @@
       </div>
 
       <!-- Add Setting Modal -->
-      <div v-if="showAddSettingModal" class="modal-overlay" @click.self="showAddSettingModal = false">
+      <div v-if="showAddSettingModal" class="modal-overlay">
         <div class="modal-content">
           <div class="modal-header">
             <h3>Add System Setting</h3>
@@ -363,7 +363,7 @@
       </div>
 
       <!-- Template Editor Modal -->
-      <div v-if="showTemplateModal" class="modal-overlay" @click.self="showTemplateModal = false">
+      <div v-if="showTemplateModal" class="modal-overlay">
         <div class="modal-content modal-large">
           <div class="modal-header">
             <h3>{{ editingTemplate ? 'Edit Template' : 'Create Template' }}</h3>

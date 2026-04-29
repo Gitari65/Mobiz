@@ -21,10 +21,16 @@ class SupplierController extends Controller
                 return response()->json(['error' => 'Unauthenticated'], 401);
             }
 
-            $suppliers = Supplier::where('company_id', $user->company_id)
+            $query = Supplier::where('company_id', $user->company_id)
                 ->with(['creator'])
-                ->orderBy('created_at', 'desc')
-                ->get();
+                ->orderBy('created_at', 'desc');
+
+            if ($request->filled('per_page')) {
+                $perPage = max(10, min((int) $request->input('per_page', 50), 500));
+                return response()->json($query->paginate($perPage), 200);
+            }
+
+            $suppliers = $query->get();
 
             return response()->json([
                 'data' => $suppliers

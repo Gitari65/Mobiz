@@ -21,6 +21,7 @@ import AuditLogsPage from '../pages/superuser/AuditLogsPage.vue'
 import ImpersonatePage from '../pages/superuser/ImpersonatePage.vue'
 import SupportPage from '../pages/superuser/SupportPage.vue'
 import ProfilePage from '../pages/superuser/ProfilePage.vue'
+import DiagnosticsPage from '../pages/superuser/DiagnosticsPage.vue'
 
 import LoginPage from '../pages/Auth/LoginPage.vue'
 import SignupPage from '../pages/Auth/SignupPage.vue'
@@ -32,6 +33,8 @@ import ManageUsersPage from '../pages/Admin/ManageUsersPage.vue'
 import AdminSettingsPage from '../pages/Admin/AdminSettingsPage.vue'
 import PromotionsPage from '../pages/Admin/PromotionsPage.vue'
 import AccountsManagementPage from '../pages/Admin/AccountsManagementPage.vue'
+import AdminAuditLogsPage from '../pages/Admin/AdminAuditLogsPage.vue'
+import MessagingPage from '../pages/admin/MessagingPage.vue'
 // New admin company profile page (to add)
 const CompanyProfilePage = () => import('../pages/Admin/CompanyProfilePage.vue')
 
@@ -84,6 +87,234 @@ const hasRole = (userRole, requiredRole) => {
   return roleHierarchy[userRole]?.includes(requiredRole) || false
 }
 
+// Subscription feature gating (for admin/cashier company packages)
+const SUBSCRIPTION_FEATURE_CACHE_KEY = 'companySubscriptionFeaturesCache'
+const SUBSCRIPTION_FEATURE_CACHE_TTL_MS = 60 * 1000
+const IS_DEV = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV)
+
+const debugLog = (...args) => {
+  if (IS_DEV) {
+    console.log(...args)
+  }
+}
+
+const getAuthToken = () => {
+  return localStorage.getItem('authToken') || localStorage.getItem('token') || ''
+}
+
+const normalizeFeature = (feature) => String(feature || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[\s-]+/g, '_')
+
+const extractFeatureKeys = (rawFeatures = []) => {
+  if (!rawFeatures) return []
+
+  if (typeof rawFeatures === 'object' && !Array.isArray(rawFeatures)) {
+    return Object.entries(rawFeatures)
+      .filter(([, isEnabled]) => Boolean(isEnabled))
+      .map(([key]) => normalizeFeature(key))
+      .filter(Boolean)
+  }
+
+  if (!Array.isArray(rawFeatures)) return []
+
+  return rawFeatures
+    .flatMap((feature) => {
+      if (typeof feature === 'string') return [feature]
+      if (!feature || typeof feature !== 'object') return []
+
+      return [
+        feature.slug,
+        feature.key,
+        feature.code,
+        feature.name,
+        feature.feature,
+        feature.id,
+      ].filter(Boolean)
+    })
+    .map(normalizeFeature)
+    .filter(Boolean)
+}
+
+const featureAliases = {
+  sales: ['sales', 'pos_sales', 'point_of_sale'],
+  products: ['products', 'product_management', 'catalog'],
+  inventory: ['inventory', 'stock', 'stock_management'],
+  reports: ['reports', 'analytics', 'reporting'],
+  expenses: ['expenses', 'expense_tracking', 'finance'],
+  promotions: ['promotions', 'marketing', 'discounts'],
+  accounts: ['accounts', 'accounting', 'ledger'],
+  admin_customization: ['admin_customization', 'customization', 'settings_admin'],
+  user_management: ['user_management', 'users', 'staff_management', 'team_management'],
+  mpesa: ['mpesa', 'mobile_money', 'm_pesa'],
+  sms: ['sms', 'messaging'],
+  credit: ['credit', 'credit_system'],
+  purchases: ['purchases', 'purchase_orders', 'po'],
+  warehouse: ['warehouse', 'warehouses', 'warehouse_management'],
+  stock_transfers: ['stock_transfers', 'stock_transfer'],
+  customer_management: ['customer_management', 'customers'],
+  suppliers: ['suppliers', 'vendor_management'],
+  tax_configuration: ['tax_configuration', 'tax', 'tax_settings'],
+  invoicing: ['invoicing', 'invoices'],
+  price_groups: ['price_groups', 'pricing', 'price_tiers'],
+  data_export: ['data_export', 'exports', 'data_exports'],
+  audit_logs: ['audit_logs', 'audit', 'logs'],
+  printer_config: ['printer_config', 'printer', 'printer_settings'],
+  returns: ['returns', 'product_returns'],
+  advanced_settings: ['advanced_settings', 'settings'],
+}
+
+const routeFeatureRequirements = {
+  '/products': ['products', 'inventory'],
+  '/inventory': ['inventory'],
+  '/reports': ['reports'],
+  '/expenses': ['expenses'],
+  '/promotions': ['promotions'],
+  '/accounts': ['accounts'],
+  '/admin-customization': ['admin_customization'],
+  '/users': ['user_management'],
+  '/customers': ['customer_management'],
+  '/suppliers': ['suppliers'],
+  '/purchases': ['purchases'],
+  '/warehouse': ['warehouse'],
+  '/warehouses': ['warehouse'],
+  '/stock-transfers': ['stock_transfers'],
+  '/credit': ['credit'],
+  '/invoices': ['invoicing'],
+  '/returns': ['returns'],
+  '/audit-logs': ['audit_logs'],
+  '/settings': ['advanced_settings'],
+  '/payment-methods': ['mpesa', 'sms'],
+  '/sms': ['sms'],
+  '/printer-settings': ['printer_config'],
+}
+
+const featureDisplayLabels = {
+  sales: 'Sales',
+  products: 'Products',
+  inventory: 'Inventory',
+  reports: 'Reports',
+  expenses: 'Expenses',
+  promotions: 'Promotions',
+  accounts: 'Accounts',
+  admin_customization: 'Admin Customization',
+  user_management: 'Manage Users',
+  mpesa: 'M-Pesa Integration',
+  sms: 'SMS Notifications',
+  credit: 'Credit System',
+  purchases: 'Purchase Orders',
+  warehouse: 'Warehouse Management',
+  stock_transfers: 'Stock Transfers',
+  customer_management: 'Customer Management',
+  suppliers: 'Supplier Management',
+  tax_configuration: 'Tax Configuration',
+  invoicing: 'Invoicing',
+  price_groups: 'Price Groups',
+  data_export: 'Data Export',
+  audit_logs: 'Audit Logs',
+  printer_config: 'Printer Configuration',
+  returns: 'Product Returns',
+  advanced_settings: 'Advanced Settings',
+}
+
+const getRouteRequiredFeatures = (path) => routeFeatureRequirements[path] || null
+const alwaysOpenSubscriptionPaths = new Set(['/', '/sales'])
+
+const redirectUnauthorized = (next, payload = {}) => {
+  next({
+    path: '/unauthorized',
+    query: payload,
+  })
+}
+
+// Foundational features that should always be accessible to company admins
+const alwaysOpenAdminPaths = new Set(['/products', '/inventory', '/reports'])
+
+const hasAnyFeature = (availableFeatures, requiredFeatures) => {
+  const allowed = new Set((availableFeatures || []).map(normalizeFeature))
+  if (allowed.has('*') || allowed.has('all')) return true
+
+  return requiredFeatures.some((requiredFeature) => {
+    const normalizedRequired = normalizeFeature(requiredFeature)
+    const aliases = featureAliases[normalizedRequired] || [normalizedRequired]
+    return aliases.some((candidate) => allowed.has(candidate))
+  })
+}
+
+const readCachedSubscriptionFeatures = ({ allowStale = false } = {}) => {
+  try {
+    const raw = localStorage.getItem(SUBSCRIPTION_FEATURE_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.ts || !Array.isArray(parsed.features)) return null
+    const activeToken = getAuthToken()
+    if ((parsed.token || '') !== activeToken) return null
+    if (!allowStale && Date.now() - parsed.ts > SUBSCRIPTION_FEATURE_CACHE_TTL_MS) return null
+    return parsed.features
+  } catch (_e) {
+    return null
+  }
+}
+
+const writeCachedSubscriptionFeatures = (features) => {
+  const normalized = extractFeatureKeys(features)
+  localStorage.setItem(SUBSCRIPTION_FEATURE_CACHE_KEY, JSON.stringify({
+    ts: Date.now(),
+    token: getAuthToken(),
+    features: normalized
+  }))
+}
+
+const fetchCompanySubscriptionFeatures = async ({ forceRefresh = false } = {}) => {
+  const cached = forceRefresh ? null : readCachedSubscriptionFeatures()
+  if (cached) return cached
+
+  const token = getAuthToken()
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+
+  try {
+    const response = await fetch('/api/company/subscription', {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        writeCachedSubscriptionFeatures([])
+        return []
+      }
+
+      // If auth/session is not fully ready yet, don't hard-fail gate checks.
+      if (response.status === 401 || response.status === 419) {
+        const stale = readCachedSubscriptionFeatures({ allowStale: true })
+        if (!forceRefresh && stale) return stale
+        throw new Error(`Subscription auth not ready (${response.status})`)
+      }
+
+      throw new Error(`Failed to load company subscription (${response.status})`)
+    }
+
+    const data = await response.json()
+    const rawFeatures = Array.isArray(data?.subscription?.features)
+      ? data.subscription.features
+      : []
+
+    const features = extractFeatureKeys(rawFeatures)
+
+    writeCachedSubscriptionFeatures(features)
+    return features
+  } catch (error) {
+    const stale = readCachedSubscriptionFeatures({ allowStale: true })
+    if (!forceRefresh && stale) {
+      console.warn('Using stale subscription feature cache due to fetch issue', error)
+      return stale
+    }
+    throw error
+  }
+}
+
 const routes = [
   { 
     path: '/login', 
@@ -119,14 +350,14 @@ const routes = [
     }
   },
 
-  // POS Sales - Available to admin and superuser (excluding cashier based on sidebar logic)
+  // POS Sales - Available to both admin and cashier
   {
     path: '/sales',
     name: 'Sales',
     component: SalesPage,
     meta: {
       requiresAuth: true,
-      excludeRoles: [ROLES.CASHIER],
+      requiresRole: ROLES.CASHIER,
       title: 'POS Sales - Mobiz POS'
     }
   },
@@ -226,6 +457,31 @@ const routes = [
     }
   },
 
+  // Admin Audit Logs - company-scoped transaction and activity monitoring
+  {
+    path: '/admin/audit-logs',
+    name: 'AdminAuditLogs',
+    component: AdminAuditLogsPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      title: 'Company Audit Logs - Mobiz POS'
+    }
+  },
+
+  // Messaging (SMS/Email) - Admin only
+  {
+    path: '/messaging',
+    name: 'Messaging',
+    component: MessagingPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.ADMIN,
+      requiredFeatures: ['sms'],
+      title: 'Messaging Center - Mobiz POS'
+    }
+  },
+
   // SuperUser routes - SuperUser only
   {
     path: '/super-user',
@@ -308,6 +564,16 @@ const routes = [
     }
   },
   {
+    path: '/diagnostics',
+    name: 'SuperUserDiagnostics',
+    component: DiagnosticsPage,
+    meta: {
+      requiresAuth: true,
+      requiresRole: ROLES.SUPERUSER,
+      title: 'Request Diagnostics - Mobiz POS'
+    }
+  },
+  {
     path: '/support',
     name: 'Support',
     component: SupportPage,
@@ -353,6 +619,10 @@ const routes = [
   {
     path: '/superuser/audit-logs',
     redirect: '/audit-logs'
+  },
+  {
+    path: '/superuser/diagnostics',
+    redirect: '/diagnostics'
   },
   {
     path: '/superuser/global-settings',
@@ -468,7 +738,7 @@ const router = createRouter({
 })
 
 // Enhanced navigation guards
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const { isAuth, role, userData } = getUserInfo()
   
   // Set page title
@@ -476,7 +746,7 @@ router.beforeEach((to, from, next) => {
     document.title = to.meta.title
   }
   
-  console.log('Navigation Guard:', {
+  debugLog('Navigation Guard:', {
     to: to.path,
     isAuth,
     role,
@@ -488,37 +758,99 @@ router.beforeEach((to, from, next) => {
 
   // Handle guest-only routes (login, signup)
   if (to.meta.requiresGuest && isAuth) {
-    console.log('Redirecting authenticated user from guest route to dashboard')
+    debugLog('Redirecting authenticated user from guest route to dashboard')
     const redirectPath = role === 'superuser' ? '/super-user' : '/'
     return next(redirectPath)
   }
 
   // Handle authentication requirement
   if (to.meta.requiresAuth && !isAuth) {
-    console.log('Redirecting unauthenticated user to login')
+    debugLog('Redirecting unauthenticated user to login')
     return next('/login')
   }
 
   // Handle role exclusions (like cashier not accessing POS sales)
   if (to.meta.excludeRoles && to.meta.excludeRoles.includes(role)) {
-    console.log(`Role ${role} is excluded from ${to.path}, redirecting to unauthorized`)
-    return next('/unauthorized')
+    debugLog(`Role ${role} is excluded from ${to.path}, redirecting to unauthorized`)
+    return redirectUnauthorized(next, {
+      reason: 'role_excluded',
+      path: to.path,
+      role,
+    })
   }
 
   // Handle specific role requirements
   if (to.meta.requiresRole && !hasRole(role, to.meta.requiresRole)) {
-    console.log(`Role ${role} doesn't have access to ${to.path} (requires ${to.meta.requiresRole}), redirecting to unauthorized`)
-    return next('/unauthorized')
+    debugLog(`Role ${role} doesn't have access to ${to.path} (requires ${to.meta.requiresRole}), redirecting to unauthorized`)
+    return redirectUnauthorized(next, {
+      reason: 'role_required',
+      path: to.path,
+      role,
+      required_role: to.meta.requiresRole,
+    })
+  }
+
+  // Enforce subscription feature access for admin/cashier routes.
+  // Superuser is intentionally not limited by company subscription features.
+  const isAdmin = role === ROLES.ADMIN
+  const bypassSubscriptionFeatureGuard = alwaysOpenSubscriptionPaths.has(to.path)
+    || (isAdmin && alwaysOpenAdminPaths.has(to.path))
+  const requiredFeatures = bypassSubscriptionFeatureGuard
+    ? null
+    : (to.meta.requiredFeatures || getRouteRequiredFeatures(to.path))
+  const isCompanyScopedRole = role === ROLES.ADMIN || role === ROLES.CASHIER
+  if (requiredFeatures && isCompanyScopedRole) {
+    try {
+      let availableFeatures = await fetchCompanySubscriptionFeatures()
+
+      if (import.meta.env.DEV) {
+        debugLog('Subscription guard feature check', {
+          path: to.path,
+          role,
+          requiredFeatures,
+          availableFeatures,
+        })
+      }
+
+      // One forced re-fetch before blocking, to avoid cache/auth timing false negatives.
+      if (!hasAnyFeature(availableFeatures, requiredFeatures)) {
+        availableFeatures = await fetchCompanySubscriptionFeatures({ forceRefresh: true })
+
+        if (import.meta.env.DEV) {
+          debugLog('Subscription guard forced refresh result', {
+            path: to.path,
+            requiredFeatures,
+            availableFeatures,
+          })
+        }
+      }
+
+      if (!hasAnyFeature(availableFeatures, requiredFeatures)) {
+        debugLog(`Route ${to.path} blocked by subscription package. Required: ${requiredFeatures.join(', ')}`)
+        const primaryFeature = requiredFeatures[0]
+        return redirectUnauthorized(next, {
+          reason: 'subscription_feature',
+          path: to.path,
+          role,
+          feature: primaryFeature,
+          feature_label: featureDisplayLabels[primaryFeature] || primaryFeature,
+        })
+      }
+    } catch (error) {
+      // Avoid false negatives caused by transient auth/cache/network timing on first load.
+      // Backend feature middleware still enforces true access control.
+      console.warn('Subscription feature check failed; allowing navigation and relying on backend enforcement', error)
+    }
   }
 
   // Log successful navigation
-  console.log(`Navigation allowed: ${from.path} → ${to.path}`)
+  debugLog(`Navigation allowed: ${from.path} -> ${to.path}`)
   next()
 })
 
 // After navigation guard for additional logging
 router.afterEach((to, from) => {
-  console.log(`Navigation completed: ${from.path} → ${to.path}`)
+  debugLog(`Navigation completed: ${from.path} -> ${to.path}`)
 })
 
 // Handle navigation errors

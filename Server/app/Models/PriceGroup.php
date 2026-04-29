@@ -12,12 +12,14 @@ class PriceGroup extends Model
         'description',
         'discount_percentage',
         'is_system',
+        'is_enabled',
         'company_id'
     ];
 
     protected $casts = [
         'discount_percentage' => 'decimal:2',
-        'is_system' => 'boolean'
+        'is_system' => 'boolean',
+        'is_enabled' => 'boolean'
     ];
 
     /**

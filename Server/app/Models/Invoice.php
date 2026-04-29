@@ -9,7 +9,8 @@ class Invoice extends Model
     protected $fillable = [
         'invoice_number', 'type', 'supplier_id', 'customer_id', 'company_id', 'user_id',
         'invoice_date', 'due_date', 'subtotal', 'tax', 'discount', 'total',
-        'paid_amount', 'balance', 'status', 'notes'
+        'paid_amount', 'balance', 'status', 'notes',
+        'payment_method', 'mpesa_receipt_number', 'mpesa_phone_number'
     ];
 
     public function supplier()
@@ -34,7 +35,7 @@ class Invoice extends Model
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public static function generateInvoiceNumber()

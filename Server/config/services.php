@@ -35,4 +35,22 @@ return [
         ],
     ],
 
+    'twilio' => [
+        'account_sid' => env('TWILIO_ACCOUNT_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'phone_number' => env('TWILIO_PHONE_NUMBER'),
+        'sandbox_mode' => env('TWILIO_SANDBOX_MODE', true),
+    ],
+
+    'mpesa' => [
+        'base_url' => env('MPESA_BASE_URL', 'https://sandbox.safaricom.co.ke'),
+        'consumer_key' => env('MPESA_CONSUMER_KEY'),
+        'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
+        'shortcode' => env('MPESA_SHORTCODE'),
+        'passkey' => env('MPESA_PASSKEY'),
+        'callback_url' => env('MPESA_CALLBACK_URL'),
+        'callback_secret' => env('MPESA_CALLBACK_SECRET'),
+        'transaction_type' => env('MPESA_TRANSACTION_TYPE', 'CustomerPayBillOnline'),
+    ],
+
 ];

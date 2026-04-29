@@ -17,6 +17,14 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\HandleCors::class,
         ]);
 
+        $middleware->alias([
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'feature' => \App\Http\Middleware\CheckFeature::class,
+        ]);
+
+        // Global request timing instrumentation for all routes.
+        $middleware->append(\App\Http\Middleware\RequestTimingMiddleware::class);
+
         $middleware->validateCsrfTokens(
             except: [
                 '*/*','*' // Exclude all routes from CSRF protection
