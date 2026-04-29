@@ -109,7 +109,7 @@ Sandbox mode allows free SMS testing:
 
 #### Step 4: Update .env File
 
-Add these lines to your `.env` file:
+Copy the Twilio configuration variables from `.env.example` and update them with your actual credentials in your `.env` file:
 
 ```
 TWILIO_ACCOUNT_SID=your_account_sid_here
@@ -118,13 +118,7 @@ TWILIO_PHONE_NUMBER=+1234567890
 TWILIO_SANDBOX_MODE=true
 ```
 
-**Example:**
-```
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your_auth_token_here
-TWILIO_PHONE_NUMBER=+1234567890
-TWILIO_SANDBOX_MODE=true
-```
+**Note:** Never commit your `.env` file to version control. The `.env` file is listed in `.gitignore` to prevent accidental exposure of secrets. Use `.env.example` as a template for other developers.
 
 #### Step 5: Verify Test Phone Numbers
 

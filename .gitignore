@@ -40,3 +40,4 @@ server/storage/logs
 server/bootstrap/cache/*.php
 server/.env
 server/.env.*
+
