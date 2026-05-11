@@ -56,18 +56,21 @@ class MpesaService
         ];
 
         try {
-            $response = Http::withToken($token)
-                ->acceptJson()
-                ->post(rtrim(config('services.mpesa.base_url'), '/') . '/mpesa/stkpush/v1/processrequest', $payload)
-                ->throw()
-                ->json();
+            $response = $this->makeHttpRequest(
+                'post',
+                rtrim(config('services.mpesa.base_url'), '/') . '/mpesa/stkpush/v1/processrequest',
+                $payload,
+                ['Authorization' => "Bearer $token"]
+            );
         } catch (\Throwable $e) {
             Log::error('M-Pesa STK push API call failed', [
                 'message' => $e->getMessage(),
+                'payload' => $payload,
                 'normalized_phone' => $this->normalizePhoneNumber($phoneNumber),
                 'amount' => max(1, (int) round($amount)),
                 'reference' => substr($reference, 0, 12),
                 'callback_url' => $callbackUrl,
+                'base_url' => config('services.mpesa.base_url'),
             ]);
             throw $e;
         }
@@ -91,11 +94,12 @@ class MpesaService
         ];
 
         try {
-            $response = Http::withToken($token)
-                ->acceptJson()
-                ->post(rtrim(config('services.mpesa.base_url'), '/') . '/mpesa/stkpushquery/v1/query', $payload)
-                ->throw()
-                ->json();
+            $response = $this->makeHttpRequest(
+                'post',
+                rtrim(config('services.mpesa.base_url'), '/') . '/mpesa/stkpushquery/v1/query',
+                $payload,
+                ['Authorization' => "Bearer $token"]
+            );
         } catch (\Throwable $e) {
             Log::error('M-Pesa STK query API call failed', [
                 'message' => $e->getMessage(),
@@ -118,13 +122,12 @@ class MpesaService
         $credentials = base64_encode(config('services.mpesa.consumer_key') . ':' . config('services.mpesa.consumer_secret'));
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Basic ' . $credentials,
-            ])
-                ->acceptJson()
-                ->get(rtrim(config('services.mpesa.base_url'), '/') . '/oauth/v1/generate?grant_type=client_credentials')
-                ->throw()
-                ->json();
+            $response = $this->makeHttpRequest(
+                'get',
+                rtrim(config('services.mpesa.base_url'), '/') . '/oauth/v1/generate?grant_type=client_credentials',
+                null,
+                ['Authorization' => 'Basic ' . $credentials]
+            );
         } catch (\Throwable $e) {
             Log::error('M-Pesa access token request failed', ['message' => $e->getMessage()]);
             throw $e;
@@ -168,6 +171,45 @@ class MpesaService
 
         if ($scheme !== 'https' || in_array($host, $disallowedHosts, true)) {
             throw new \RuntimeException('MPESA_CALLBACK_URL must be a public HTTPS URL in production.');
+        }
+    }
+
+    private function makeHttpRequest(string $method, string $url, ?array $data = null, array $headers = []): array
+    {
+        $client = Http::withHeaders(array_merge($headers, ['Content-Type' => 'application/json', 'Accept' => 'application/json']));
+
+        // For sandbox/development, disable SSL verification to handle self-signed certificates
+        if (!app()->environment('production')) {
+            $client = $client->withoutVerifying();
+        }
+
+        try {
+            $response = match ($method) {
+                'post' => $client->post($url, $data ?? []),
+                'get' => $client->get($url),
+                default => throw new \InvalidArgumentException("Unsupported HTTP method: $method"),
+            };
+
+            if ($response->failed()) {
+                $errorBody = $response->body();
+                Log::error('M-Pesa HTTP request failed', [
+                    'url' => $url,
+                    'method' => $method,
+                    'status_code' => $response->status(),
+                    'response_body' => $errorBody,
+                    'headers' => $response->headers(),
+                ]);
+                throw new \RuntimeException("M-Pesa API returned status {$response->status()}: {$errorBody}");
+            }
+
+            return $response->json();
+        } catch (\Throwable $e) {
+            Log::error('M-Pesa HTTP request error', [
+                'url' => $url,
+                'method' => $method,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
         }
     }
 }
