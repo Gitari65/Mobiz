@@ -1,0 +1,127 @@
+### M-Pesa Integration Test Collection
+
+## SETUP
+@baseUrl = http://localhost:8000/api
+@authToken = {{YOUR_AUTH_TOKEN}}
+@companId = {{YOUR_COMPANY_ID}}
+
+---
+
+## 1. STK PUSH - Initiate Payment
+POST {{baseUrl}}/mpesa/stk-push
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "phone_number": "25470837149",
+  "amount": 100,
+  "account_reference": "REF" + @ts,
+  "transaction_desc": "Test Payment"
+}
+
+> {%
+  client.global.set("checkoutRequestId", response.body.transaction.checkout_request_id);
+  client.global.set("transactionId", response.body.transaction.id);
+  client.log("Checkout Request ID: " + response.body.transaction.checkout_request_id);
+  client.log("Transaction ID: " + response.body.transaction.id);
+%}
+
+---
+
+## 2. STATUS QUERY - Check Payment Status (Before User Response)
+POST {{baseUrl}}/mpesa/stk-query
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}"
+}
+
+> {%
+  client.log("Transaction Status: " + response.body.transaction.status);
+  client.log("Result Code: " + response.body.transaction.result_code);
+  client.log("Result Desc: " + response.body.transaction.result_desc);
+%}
+
+---
+
+## 3. SIMULATE CALLBACK - User Accepts Payment
+POST {{baseUrl}}/mpesa/test-callback
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}",
+  "result_code": "0",
+  "result_desc": "The service request is processed successfully.",
+  "receipt_number": "TEG8M0IY4U"
+}
+
+> {%
+  client.log("Test Callback Response: " + JSON.stringify(response.body));
+%}
+
+---
+
+## 4. STATUS QUERY - Check Payment Status (After User Accepts)
+POST {{baseUrl}}/mpesa/stk-query
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}"
+}
+
+> {%
+  client.log("Final Status: " + response.body.transaction.status);
+  client.log("Receipt Number: " + response.body.transaction.mpesa_receipt_number);
+%}
+
+---
+
+## 5. GET TRANSACTION - Retrieve Transaction Details
+GET {{baseUrl}}/mpesa/transactions/{{checkoutRequestId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+---
+
+## ALTERNATIVE: SIMULATE USER CANCELS PAYMENT
+
+POST {{baseUrl}}/mpesa/test-callback
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}",
+  "result_code": "1032",
+  "result_desc": "Request canceled by the user"
+}
+
+---
+
+## NOTES:
+
+1. **Get Auth Token:**
+   - POST /api/login with your credentials
+   - Copy the token from response
+
+2. **Test Credentials (Safaricom Sandbox):**
+   - Phone: 25470837149
+   - Amount: Any amount (will be simulated)
+   - Shortcode: 174379
+   - Passkey: bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919
+
+3. **Result Codes:**
+   - 0: Success
+   - 1032: User cancelled
+   - Other codes: Various failures
+
+4. **Testing Flow:**
+   - Step 1: Initiate STK push (prompts user)
+   - Step 2: Query status before user responds (should be pending)
+   - Step 3: Simulate callback (simulates user accepting/declining)
+   - Step 4: Query status after callback (should reflect user action)
+   - Step 5: Get full transaction details
+
+5. **Production vs Development:**
+   - Test callback endpoint (Step 3) only available in development
+   - In production, actual M-Pesa callbacks will trigger the /mpesa/callback endpoint

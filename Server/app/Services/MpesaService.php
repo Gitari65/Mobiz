@@ -4,11 +4,45 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\CompanySetting;
 
 class MpesaService
 {
+    private ?int $companyId = null;
+
+    public function __construct(?int $companyId = null)
+    {
+        $this->companyId = $companyId;
+    }
+
+    private function getCompanyMpesaConfig(): ?array
+    {
+        if (!$this->companyId) {
+            return null;
+        }
+
+        $setting = CompanySetting::where('company_id', $this->companyId)->first();
+        
+        if (!$setting || !$setting->mpesa_enabled || !$setting->mpesa_number) {
+            return null;
+        }
+
+        return [
+            'mpesa_number' => $setting->mpesa_number,
+            'mpesa_type' => $setting->mpesa_type,
+            'mpesa_business_name' => $setting->mpesa_business_name,
+        ];
+    }
+
     public function isConfigured(): bool
     {
+        // Check company-specific config first
+        $companyConfig = $this->getCompanyMpesaConfig();
+        if ($companyConfig) {
+            return true;
+        }
+
+        // Fall back to .env config for backward compatibility
         return (bool) config('services.mpesa.consumer_key')
             && (bool) config('services.mpesa.consumer_secret')
             && (bool) config('services.mpesa.shortcode')

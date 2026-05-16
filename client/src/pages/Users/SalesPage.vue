@@ -630,6 +630,206 @@
         </div>
       </div>
     </div>
+
+    <!-- Process Sale Modal -->
+    <div v-if="showProcessSaleModal" class="modal-overlay process-sale-overlay" @click.self="showProcessSaleModal = false">
+      <div class="process-sale-modal">
+        <div class="modal-header">
+          <h2>
+            <i class="fas fa-check-circle"></i>
+            Process Sale
+          </h2>
+          <button @click="showProcessSaleModal = false" class="modal-close-btn">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <!-- M-Pesa Status Alert -->
+          <div v-if="isMpesaPayment" :class="['mpesa-status-alert', getMpesaAlertClass()]">
+            <div class="mpesa-alert-header">
+              <i :class="getMpesaAlertIcon()"></i>
+              <span class="mpesa-status-label">{{ getMpesaStatusLabel() }}</span>
+            </div>
+            <div class="mpesa-alert-details">
+              <div v-if="paymentForm.mpesaPhoneNumber" class="detail-row">
+                <span class="label">Phone:</span>
+                <span class="value">{{ paymentForm.mpesaPhoneNumber }}</span>
+              </div>
+              <div v-if="paymentForm.mpesaReceiptNumber" class="detail-row">
+                <span class="label">Receipt:</span>
+                <span class="value">{{ paymentForm.mpesaReceiptNumber }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Status:</span>
+                <span class="value" :class="['status-badge', paymentForm.mpesaStatus]">
+                  {{ paymentForm.mpesaStatusLabel }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Order Summary -->
+          <div class="order-summary-section">
+            <h3>Order Summary</h3>
+            <div class="summary-items">
+              <div v-for="item in cart" :key="item.cart_uid" class="summary-item">
+                <span class="item-name">{{ item.name }} × {{ item.quantity }}</span>
+                <span class="item-total">Ksh {{ formatPrice(item.price * item.quantity) }}</span>
+              </div>
+            </div>
+            <div class="summary-totals">
+              <div class="total-row">
+                <span>Subtotal:</span>
+                <span>Ksh {{ formatPrice(subtotal) }}</span>
+              </div>
+              <div v-if="promoDiscount > 0" class="total-row discount">
+                <span>Discount:</span>
+                <span>-Ksh {{ formatPrice(promoDiscount) }}</span>
+              </div>
+              <div v-if="totalTax > 0" class="total-row tax">
+                <span>Tax:</span>
+                <span>Ksh {{ formatPrice(totalTax) }}</span>
+              </div>
+              <div class="total-row grand-total">
+                <span>Total:</span>
+                <span>Ksh {{ formatPrice(netTotal) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Payment Details -->
+          <div class="payment-section">
+            <h3>Payment Details</h3>
+            
+            <div class="form-group">
+              <label>Payment Method</label>
+              <select v-model="paymentForm.paymentMethod" class="form-input">
+                <option v-for="method in paymentMethods" :key="method" :value="method">
+                  {{ method }}
+                </option>
+              </select>
+            </div>
+
+            <div v-if="isMpesaPayment" class="form-group">
+              <label>M-Pesa Phone Number</label>
+              <input 
+                v-model="paymentForm.mpesaPhoneNumber" 
+                type="tel" 
+                placeholder="0748344757 or +254748344757"
+                class="form-input"
+                @keyup="normalizePhoneInput"
+              />
+            </div>
+
+            <div class="form-group">
+              <label>Amount Paid</label>
+              <input 
+                v-model.number="paymentForm.amountPaid" 
+                type="number" 
+                placeholder="0"
+                class="form-input"
+              />
+            </div>
+
+            <!-- M-Pesa Payment Initiation -->
+            <div v-if="isMpesaPayment && !paymentForm.mpesaCheckoutRequestId" class="form-group">
+              <button 
+                @click="initiateMpesaPayment"
+                class="mpesa-init-btn"
+                :disabled="!paymentForm.mpesaPhoneNumber || !paymentForm.amountPaid"
+              >
+                <i class="fas fa-mobile-alt"></i>
+                Send M-Pesa Prompt
+              </button>
+            </div>
+
+            <!-- M-Pesa Status Check -->
+            <div v-if="isMpesaPayment && paymentForm.mpesaCheckoutRequestId && paymentForm.mpesaStatus !== 'success'" class="form-group">
+              <button 
+                @click="checkMpesaPaymentStatus"
+                class="mpesa-check-btn"
+                :disabled="paymentForm.mpesaStatus === 'checking'"
+              >
+                <i :class="paymentForm.mpesaStatus === 'checking' ? 'fas fa-spinner fa-spin' : 'fas fa-search'"></i>
+                {{ paymentForm.mpesaStatus === 'checking' ? 'Checking Status...' : 'Check Payment Status' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Customer Info (Optional) -->
+          <div v-if="selectedCustomerId || paymentForm.amountPaid < netTotal" class="customer-section">
+            <h3>Customer Information</h3>
+            <div class="form-group">
+              <label>Customer</label>
+              <select v-model="selectedCustomerId" class="form-input">
+                <option value="">Select Customer</option>
+                <option v-for="customer in customers" :key="customer.id" :value="customer.id">
+                  {{ customer.name }} (Balance: Ksh {{ customer.credit_balance || 0 }})
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea 
+                v-model="saleForm.notes" 
+                placeholder="Order notes..."
+                class="form-textarea"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Error/Warning Messages -->
+          <div v-if="creditBlockReason" class="alert-message error">
+            <i class="fas fa-ban"></i>
+            <span>{{ creditBlockReason }}</span>
+          </div>
+          <div v-if="isMpesaPayment && paymentForm.mpesaStatus !== 'success' && paymentForm.mpesaCheckoutRequestId" class="alert-message warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>Complete M-Pesa payment before processing</span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button 
+            @click="showProcessSaleModal = false" 
+            class="secondary-btn"
+          >
+            Cancel
+          </button>
+          <button 
+            @click="submitSale"
+            :disabled="!canProcessSale || submitting"
+            :class="{ 'processing': submitting }"
+            class="checkout-btn"
+          >
+            <div v-if="submitting" class="btn-loading">
+              <div class="btn-spinner"></div>
+              Processing...
+            </div>
+            <div v-else class="btn-content">
+              <i class="fas fa-credit-card"></i>
+              Process Sale
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Process Sale Button (Floating) -->
+    <button 
+      v-if="cart.length > 0"
+      @click="showProcessSaleModal = true"
+      class="process-sale-btn"
+      :class="{ 'has-issues': isMpesaPayment && paymentForm.mpesaStatus !== 'success' }"
+      title="Process Sale"
+    >
+      <i class="fas fa-shopping-bag"></i>
+      <span class="btn-label">Process</span>
+      <span v-if="isMpesaPayment" class="mpesa-indicator" :class="paymentForm.mpesaStatus">
+        <i :class="getMpesaIndicatorIcon()"></i>
+      </span>
+    </button>
   </div>
 </template>
 
@@ -642,6 +842,7 @@ import { cachedGet } from '../../services/api'
 const products = ref([])
 const cart = ref([])
 const cartOpen = ref(false)
+const showProcessSaleModal = ref(false)
 const loading = ref(false)
 const submitting = ref(false)
 const searchQuery = ref('')

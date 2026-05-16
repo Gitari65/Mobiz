@@ -225,6 +225,13 @@ Route::middleware(['auth:sanctum', 'feature:mpesa'])->group(function () {
 
 Route::post('mpesa/callback', [MpesaController::class, 'callback']);
 
+// M-Pesa Test Callback (development/testing only)
+if (!app()->environment('production')) {
+    Route::post('mpesa/test-callback', [MpesaController::class, 'testCallback'])
+        ->name('mpesa.test-callback')
+        ->withoutMiddleware('api');
+}
+
 // UOMs (Units of Measure)
 Route::get('uoms/conversion-factor', [\App\Http\Controllers\UOMController::class, 'conversionFactor']);
 Route::apiResource('uoms', \App\Http\Controllers\UOMController::class);

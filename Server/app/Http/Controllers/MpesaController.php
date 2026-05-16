@@ -28,7 +28,9 @@ class MpesaController extends Controller
         }
 
         try {
-            $response = $this->mpesaService->initiateStkPush(
+            // Create service with company_id for company-specific config
+            $mpesaService = new MpesaService($user->company_id);
+            $response = $mpesaService->initiateStkPush(
                 $validated['phone_number'],
                 (float) $validated['amount'],
                 $validated['account_reference'],
@@ -101,7 +103,9 @@ class MpesaController extends Controller
             ->firstOrFail();
 
         try {
-            $response = $this->mpesaService->queryStkStatus($validated['checkout_request_id']);
+            // Create service with company_id for company-specific config
+            $mpesaService = new MpesaService($user->company_id);
+            $response = $mpesaService->queryStkStatus($validated['checkout_request_id']);
 
             if (array_key_exists('ResultCode', $response)) {
                 $transaction->result_code = (string) $response['ResultCode'];
@@ -129,9 +133,20 @@ class MpesaController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
+            // Check if it's a rate limit error
+            if (strpos($e->getMessage(), '429') !== false || strpos($e->getMessage(), 'Spike arrest') !== false) {
+                return response()->json([
+                    'error' => 'Rate limit exceeded',
+                    'message' => 'Too many requests. Please wait a moment before trying again.',
+                    'retry_after' => 60,
+                    'transaction' => $transaction,
+                ], 429);
+            }
+
             return response()->json([
                 'error' => 'Failed to query M-Pesa payment status',
                 'message' => $e->getMessage(),
+                'transaction' => $transaction,
             ], 500);
         }
     }
@@ -204,6 +219,90 @@ class MpesaController extends Controller
         }
 
         return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Accepted']);
+    }
+
+    public function testCallback(Request $request)
+    {
+        // This endpoint is only available in non-production environments for testing
+        if (app()->environment('production')) {
+            return response()->json(['error' => 'Test callbacks are not available in production'], 403);
+        }
+
+        $validated = $request->validate([
+            'checkout_request_id' => 'required|string',
+            'result_code' => 'required|in:0,1032,1,2',  // 0=success, 1032=user cancelled, other=failed
+            'result_desc' => 'nullable|string',
+            'receipt_number' => 'nullable|string',
+        ]);
+
+        $transaction = MpesaTransaction::where('checkout_request_id', $validated['checkout_request_id'])->first();
+        
+        if (!$transaction) {
+            return response()->json([
+                'error' => 'Transaction not found for checkout request ID',
+                'checkout_request_id' => $validated['checkout_request_id']
+            ], 404);
+        }
+
+        // Simulate M-Pesa callback payload
+        $testPayload = [
+            'Body' => [
+                'stkCallback' => [
+                    'MerchantRequestID' => $transaction->merchant_request_id,
+                    'CheckoutRequestID' => $validated['checkout_request_id'],
+                    'ResultCode' => $validated['result_code'],
+                    'ResultDesc' => $validated['result_desc'] ?? $this->getResultDesc($validated['result_code']),
+                    'CallbackMetadata' => [
+                        'Item' => [
+                            ['Name' => 'Amount', 'Value' => $transaction->amount],
+                            ['Name' => 'MpesaReceiptNumber', 'Value' => $validated['receipt_number'] ?? 'TEST' . date('YmdHis')],
+                            ['Name' => 'TransactionDate', 'Value' => date('YmdHis')],
+                            ['Name' => 'PhoneNumber', 'Value' => str_replace('254', '0', $transaction->phone_number)],
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        // Update transaction as if callback was received
+        $transaction->update([
+            'status' => ((string) $validated['result_code'] === '0') ? 'success' : 'failed',
+            'result_code' => (string) $validated['result_code'],
+            'result_desc' => $validated['result_desc'] ?? $this->getResultDesc($validated['result_code']),
+            'mpesa_receipt_number' => $validated['receipt_number'] ?? 'TEST' . date('YmdHis'),
+            'transaction_date' => now(),
+            'raw_callback' => $testPayload,
+        ]);
+
+        if ($transaction->sale_id) {
+            $transaction->sale()->update([
+                'mpesa_receipt_number' => $transaction->mpesa_receipt_number,
+            ]);
+        }
+
+        Log::info('M-Pesa test callback processed', [
+            'transaction_id' => $transaction->id,
+            'checkout_request_id' => $validated['checkout_request_id'],
+            'result_code' => $validated['result_code'],
+            'is_test' => true,
+        ]);
+
+        return response()->json([
+            'message' => 'Test callback processed successfully',
+            'transaction' => $transaction->fresh(),
+            'simulated_payload' => $testPayload,
+        ]);
+    }
+
+    private function getResultDesc(string $resultCode): string
+    {
+        return match ($resultCode) {
+            '0' => 'The service request is processed successfully.',
+            '1032' => 'Request canceled by the user',
+            '1' => 'An error occurred during processing',
+            '2' => 'The initiator information is invalid',
+            default => 'Unknown result code',
+        };
     }
 
     private function logFailure(string $message, array $context = []): void

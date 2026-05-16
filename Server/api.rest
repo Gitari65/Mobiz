@@ -1,16 +1,99 @@
-POST  http://localhost:8000/sales
+### M-Pesa STK Push Test Flow
+### Note: This requires authentication. See instructions below.
+
+### INSTRUCTIONS FOR TESTING:
+### 1. Run this command to get a Sanctum token for testing:
+###    php artisan tinker
+###    $token = App\Models\User::find(1)->createToken('test')->plainTextToken;
+###    echo $token;
+###
+### 2. Set the token in this file (replace {{authToken}} with actual token)
+### 3. Run the requests in order
+
+@authToken = 13|IoIhMjozDvek1l7nqmErbOagg30qeq0jPJIFN9NN94d399f7
+@baseUrl = http://localhost:8000
+
+###
+
+### STEP 1: Initiate M-Pesa STK Push
+
+POST {{baseUrl}}/api/mpesa/stk-push
+Authorization: Bearer {{authToken}}
 Content-Type: application/json
-Accept: application/json
 
 {
-  "items": [
-    {
-      "product_id": 1,
-      "quantity": 4
-    },
-    {
-      "product_id": 2,
-      "quantity": 3
-    }
-  ]
+  "phone_number": "+254748344757",
+  "amount": 100,
+  "account_reference": "INVOICE128",
+  "transaction_desc": "Product payment"
 }
+
+> {%
+  client.global.set("checkoutRequestId", response.body.transaction.checkout_request_id);
+  client.global.set("transactionId", response.body.transaction.id);
+  client.log("✓ STK Push sent successfully");
+  client.log("  Checkout Request ID: " + response.body.transaction.checkout_request_id);
+  client.log("  Transaction ID: " + response.body.transaction.id);
+  client.log("  Status: " + response.body.transaction.status);
+%}
+
+###
+
+### STEP 2: Query Payment Status (before user responds)
+
+POST {{baseUrl}}/api/mpesa/stk-query
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}"
+}
+
+> {%
+  client.log("✓ Status query successful");
+  client.log("  Current Status: " + response.body.transaction.status);
+%}
+
+###
+
+### STEP 3: Simulate M-Pesa Callback (user accepts payment)
+
+POST {{baseUrl}}/api/mpesa/test-callback
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}",
+  "result_code": "0",
+  "result_desc": "The service request is processed successfully.",
+  "receipt_number": "TEG8M0IY4U"
+}
+
+> {%
+  client.log("✓ Callback simulated - payment accepted by user");
+%}
+
+###
+
+### STEP 4: Check Final Transaction Status (after callback)
+
+POST {{baseUrl}}/api/mpesa/stk-query
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}"
+}
+
+> {%
+  client.log("✓ Final Status check");
+  client.log("  Final Status: " + response.body.transaction.status);
+  client.log("  Receipt Number: " + response.body.transaction.mpesa_receipt_number);
+%}
+
+###
+
+### STEP 5: Get Transaction Details
+
+GET {{baseUrl}}/api/mpesa/transactions/{{checkoutRequestId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json

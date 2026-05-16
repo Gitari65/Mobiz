@@ -1,0 +1,17 @@
+### M-Pesa Status Query Test
+
+@authToken = 13|IoIhMjozDvek1l7nqmErbOagg30qeq0jPJIFN9NN94d399f7
+@baseUrl = http://localhost:8000
+@checkoutRequestId = ws_CO_14052026141116044748344757
+
+###
+
+### Test Status Query Endpoint
+
+POST {{baseUrl}}/api/mpesa/stk-query
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "checkout_request_id": "{{checkoutRequestId}}"
+}
